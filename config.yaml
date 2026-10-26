@@ -1,0 +1,90 @@
+# wxdash configuration ─────────────────────────────────────────────────────
+timezone: America/New_York
+home: home                 # location used for the "now" panel and hourly strip
+refresh_minutes: 30        # HRRR updates hourly; 30 min keeps well under Open-Meteo's free limits
+forecast_days: 7
+lookahead_days: 7          # days of scheduled activities to show (weekend items stay visible all week)
+timeline_hours: 36
+
+# Open-Meteo model ids, in blend priority order (first non-null wins per hour;
+# HRRR runs out after ~18–48 h and NBM/GFS take over automatically).
+models: [ncep_hrrr_conus, ncep_nbm_conus, ncep_gfs_seamless]
+# var_priority:            # optional per-variable override
+#   precipitation_probability: [ncep_nbm_conus, ncep_gfs_seamless]
+
+# ── Places ────────────────────────────────────────────────────────────────
+# Starting points — adjust coordinates and beach orientation to your spots.
+locations:
+  home:
+    name: Atlantic Highlands
+    lat: 40.413
+    lon: -74.035
+
+  long_branch:
+    name: Long Branch
+    lat: 40.300
+    lon: -73.983
+    facing: 100              # beach looks out toward ESE → offshore wind is from WNW
+    swell_window: [30, 180]  # NE around to S
+    noaa_station: "8531680"  # Sandy Hook tide predictions + water temp
+    tide: {phase: [mid, high], trend: [rising]}
+    wave_ft: {min: 1.5, ideal: [3, 6], max: 9}
+
+  sandy_hook_bay:
+    name: Sandy Hook Bay
+    lat: 40.425
+    lon: -74.030
+    marine_lat: 40.47        # wave model grid point out in the Lower Bay
+    marine_lon: -74.04
+    noaa_station: "8531680"
+    wind_kt: {ideal: [8, 15], reef: 18, max: 23}
+
+# ── Global rule overrides per activity (any default can be overridden) ─────
+rules:
+  spectator:
+    uv_sunscreen: 4
+  running:
+    dress_offset: 15
+  # spectator:
+  #   wind: [[0,0],[7,0],[12,0.4],[18,1.2],[25,3],[35,5]]
+
+# ── Schedule ──────────────────────────────────────────────────────────────
+# Fixed:     time: "10:00-13:00"
+# Flexible:  flex: {between: "06:00-20:00", duration: 1}   → picks the best window
+# One-off:   date: 2026-10-24  (instead of days:)
+schedule:
+  - id: baseball
+    activity: spectator
+    label: Saturday baseball
+    location: home
+    days: [sat]
+    time: "10:00-13:00"
+
+  - id: surf
+    activity: surf
+    label: Surf session
+    location: long_branch
+    days: [sat, sun]
+    time: "07:00-10:00"
+
+  - id: sail
+    activity: sailing
+    label: Afternoon sail
+    location: sandy_hook_bay
+    days: [sat, sun]
+    flex: {between: "11:00-18:00", duration: 3}
+
+  - id: run
+    activity: running
+    label: Run
+    location: home
+    days: [mon, tue, wed, thu, fri, sat, sun]
+    flex: {between: "06:00-19:00", duration: 1}
+
+  - id: leaves
+    activity: yardwork
+    label: Leaf cleanup
+    location: home
+    days: [sat, sun]
+    flex: {between: "09:00-17:00", duration: 3}
+    rules: {task: leaves}
