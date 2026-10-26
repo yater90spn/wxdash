@@ -77,6 +77,7 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   schedule removed (those cards were placeholders, not Doug's real plans).
 
 ## Places in config
-home = Atlantic Highlands; long_branch = surf spot (beach faces 100° ESE, so offshore wind
-is from the WNW); sandy_hook_bay = sailing. Coordinates and beach orientation are starting
+home = Atlantic Highlands; **sandy_hook_lot_b = Doug's main surf spot** (Sandy Hook South Beach
+Lot B, 40.4175/-73.979, faces 90° E, offshore = W/SW, swell window NE–SE, all tides OK);
+long_branch = secondary example surf spot (faces 100° ESE); sandy_hook_bay = sailing. Coordinates and beach orientation are starting
 guesses for Doug to adjust.

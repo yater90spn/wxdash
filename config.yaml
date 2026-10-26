@@ -20,7 +20,18 @@ locations:
     lat: 40.413
     lon: -74.035
 
-  long_branch:
+  sandy_hook_lot_b:
+    name: Sandy Hook – Lot B
+    lat: 40.4175             # South Beach, north end of Lot B (the second ocean-side lot)
+    lon: -73.979
+    marine_lat: 40.42        # wave-model point just offshore
+    marine_lon: -73.96
+    facing: 90               # ocean side faces E → offshore wind is from the W/SW
+    swell_window: [20, 160]  # NE through SE reaches the beach; S is blocked by the coast
+    noaa_station: "8531680"  # Sandy Hook tide predictions + water temp
+    wave_ft: {min: 1.5, ideal: [3, 6], max: 9}
+
+  long_branch:               # secondary spot (example; remove if unused)
     name: Long Branch
     lat: 40.300
     lon: -73.983

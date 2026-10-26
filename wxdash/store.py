@@ -20,7 +20,7 @@ import time
 import uuid
 
 DEFAULT_WATCHES = {
-    "surf": {"enabled": True, "location": "long_branch", "between": "06:00-18:00",
+    "surf": {"enabled": True, "location": "sandy_hook_lot_b", "between": "06:00-18:00",
              "duration": 2, "min_score": 6.5, "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
     "sailing": {"enabled": True, "location": "sandy_hook_bay", "between": "10:00-18:00",
                 "duration": 3, "min_score": 7.0, "days": ["sat", "sun"]},
