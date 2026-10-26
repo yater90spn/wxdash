@@ -7,6 +7,7 @@ lookahead_days: 7          # days of scheduled activities to show (weekend items
 timeline_hours: 36         # hours visible at once on the bottom strip (swipe for the rest of the week)
 history_hours: 24          # past hours on the strip: actual (NWS station) vs forecast from a day earlier
 # obs_station: KBLM        # NWS station for actuals; default = nearest reporting station
+tide_station: "8531680"    # NOAA tide station for the strip's tide curve (Sandy Hook); remove to hide
 
 # Open-Meteo model ids, in blend priority order (first non-null wins per hour;
 # HRRR runs out after ~18–48 h and NBM/GFS take over automatically).

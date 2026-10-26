@@ -136,6 +136,7 @@ body.dim{filter:brightness(.55)}
           <span style="color:var(--temp)">Temp</span>
           <span style="color:var(--ink3)">Feels like</span>
           <span style="color:var(--rain)">Rain chance</span>
+          <span style="color:var(--s4)" id="tideLeg">Tide</span>
         </span>
         <span class="spacer"></span>
         <button class="tl-now" id="tlNow" type="button">← Now</button>
@@ -499,6 +500,25 @@ function renderTimeline(d) {
     ax += `<text x="38" y="${y(v) + 4}" text-anchor="end" fill="var(--ink3)" font-size="13">${v}°</text>`;
   }
   ax += `<text x="0" y="${rBot - 4}" fill="var(--rain)" font-size="12">rain</text><text x="0" y="${wY + 5}" fill="var(--wind)" font-size="12">mph</text>`;
+  // Tide (forecast side only): soft teal curve in the rain band, behind the bars, H/L labels
+  const tide = d.tides && d.tides[key];
+  const tideLeg = document.getElementById("tideLeg"); if (tideLeg) tideLeg.hidden = !tide;
+  if (tide && tide.hourly.length > 1) {
+    const pts = tide.hourly.map(([t, ft]) => [xt(new Date(t).getTime()) + cw / 2, ft]).filter(p => p[0] >= nowIdx * cw);
+    const fts = pts.map(p => p[1]), tlo = Math.min(...fts), thi = Math.max(...fts);
+    const ty = ft => rBot - 3 - (ft - tlo) / Math.max(0.1, thi - tlo) * (rBot - rTop - 10);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${ty(p[1]).toFixed(1)}`).join("");
+    if (pts.length > 1) {
+      s += `<path d="${line}L${pts[pts.length - 1][0].toFixed(1)},${rBot}L${pts[0][0].toFixed(1)},${rBot}Z" fill="rgba(56,178,172,.13)"/>`;
+      s += `<path d="${line}" fill="none" stroke="var(--s4)" stroke-width="1.6" opacity=".8"/>`;
+      for (const ev of tide.events) {
+        const ex = xt(new Date(ev.t).getTime()); if (ex < nowIdx * cw || ex > W) continue;
+        const lbl = `${ev.type} ${hourLbl(new Date(ev.t)).replace(/([ap])$/, "")}${new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}) !== "00" ? ":" + new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}).padStart(2, "0") : ""}${hourLbl(new Date(ev.t)).slice(-1)}`;
+        const ey = ev.type === "H" ? ty(thi) - 3 : ty(tlo) - 5;
+        s += `<text x="${ex}" y="${ey}" text-anchor="middle" fill="var(--s4)" font-size="11" font-weight="600">${lbl}</text>`;
+      }
+    }
+  }
   // Past: rain amounts, measured (filled) vs forecast a day earlier (outline); full height = 0.25 in
   const amtH = a => Math.min(1, (a || 0) / 0.25) * (rBot - rTop);
   tl.forEach((h, i) => {

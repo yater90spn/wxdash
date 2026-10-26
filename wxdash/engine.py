@@ -59,6 +59,7 @@ class Engine:
         self.errors = []
         self._fetched = {}
         self._hist = {"at": 0.0, "data": None, "station": None}
+        self._tides = {}   # station -> (fetched_at, {"hourly": [...], "events": [...]})
 
     # ---------- data ----------
     def locations(self, data=None):
@@ -388,6 +389,38 @@ class Engine:
             })
         return out, station
 
+    # ---------- tide curve for the strip ----------
+    def tides_for(self, station):
+        """NOAA predictions for a station, cached 6 h (predictions don't change)."""
+        hit = self._tides.get(station)
+        if hit and time.time() - hit[0] < 6 * 3600:
+            return hit[1]
+        days = self.cfg.get("forecast_days", 7)
+        if self.demo:
+            from .demo import fake_tides
+            t = fake_tides(self.tz, days)
+        else:
+            t = noaa.fetch_tides(station, self.tz, days, self.session)
+        self._tides[station] = (time.time(), t)
+        return t
+
+    def _tide_series(self, key, start):
+        """{"hourly": [[iso, ft]], "events": [{t, ft, type}]} from `start` on, or None."""
+        st = (self.cfg.get("tide_station") if key == self.cfg.get("home", "home")
+              else self.locations().get(key, {}).get("noaa_station"))
+        if not st:
+            return None
+        try:
+            t = self.tides_for(str(st))
+        except Exception as ex:
+            self.errors.append(f"tides: {ex}")
+            return None
+        return {
+            "hourly": [[d.isoformat(), round(v, 2)] for d, v in t["hourly"] if d >= start],
+            "events": [{"t": d.isoformat(), "ft": round(v, 1), "type": "H" if typ == "H" else "L"}
+                       for d, v, typ in t["events"] if d >= start],
+        }
+
     # ---------- dashboard ----------
     def _cached_hours(self, key):
         """Hourly data for a place, reusing whichever cached fetch exists."""
@@ -466,6 +499,11 @@ class Engine:
                 timelines[key] = self._timeline(h2, i2)
             except Exception as ex:
                 self.errors.append(f"timeline {key}: {ex}")
+        tides = {}
+        for key in timelines:
+            series = self._tide_series(key, cur)
+            if series:
+                tides[key] = series
         oldest = min(self._fetched.values()) if self._fetched else time.time()
         return {
             "data_age_min": round((time.time() - oldest) / 60),
@@ -476,6 +514,7 @@ class Engine:
             "now": now_block,
             "timeline": tl,
             "timelines": timelines,
+            "tides": tides,
             "home_key": home_key,
             "timeline_visible_hours": self.cfg.get("timeline_hours", 36),
             "timeline_now_index": len(past),

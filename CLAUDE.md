@@ -58,6 +58,12 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   orange dashed, feels gray dotted; rain measured = filled bar, forecast = outline.
 - Not yet verified against the live services from the Pi (sandbox can't reach them).
 
+## Tide curve on the strip
+- Forecast side only (not in the past section, by request — it's already busy). Soft teal
+  area + line in the rain band, behind the rain bars, labeled at highs/lows ("H 7:21p").
+- Home uses `tide_station` (config, Sandy Hook 8531680); a selected card's place uses its
+  `noaa_station`. `Engine.tides_for` caches NOAA predictions 6 h; payload `tides[loc_key]`.
+
 ## Quick check (left panel buttons)
 - One button per *enabled* watch (Surf / Sail / Run / Yard) above "⏻ Screen off" in the
   bottom-left. Tap → pop-up with a card rated for now → +2 h at the watch's place
