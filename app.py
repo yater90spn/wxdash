@@ -67,6 +67,11 @@ def create_app(config_path, demo=False, data_path=None):
             state["mtime"] = m
         return state["engine"]
 
+    # Screen on/off schedule (runs in the background for the life of the server)
+    import threading
+    threading.Thread(target=display.run_schedule, daemon=True,
+                     args=(lambda: store.load()["display"].get("on_hours"), lambda: engine().tz, demo)).start()
+
     def err(msg, code=400):
         return jsonify({"error": msg}), code
 

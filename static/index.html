@@ -391,46 +391,19 @@ function renderTimeline(d) {
 
 function render(d) {
   DATA = d; renderNow(d); renderCards(d); renderTimeline(d); dimCheck(d);
-  document.getElementById("pwrBtn").onclick = e => { e.stopPropagation(); screenPower(false); };
-  if (d.display && d.display.power) syncScreen(d.display.power.on);
+  document.getElementById("pwrBtn").onclick = e => { e.stopPropagation(); screenOff(); };
 }
 
 // ---------- screen power ----------
-// The Pi turns the panel off (standby) after idle_minutes without a touch, except
-// during keep_on hours. Touch still reaches the page while it's off, so the first
-// tap wakes it (and is swallowed so it doesn't also select a card).
-let SCREEN_ON = true, LAST_INPUT = Date.now(), SWALLOW_UNTIL = 0;
-async function screenPower(on) {
+// The Corsair stops sending touches while it's in standby, so a tap can't wake it.
+// The server turns the screen on/off on a daily schedule; this button turns it off
+// until the next scheduled on-time (or until "Turn on" in the planner).
+async function screenOff() {
   try {
-    const r = await fetch("/api/display/power", {method: "POST", headers: {"Content-Type": "application/json"},
-                                                  body: JSON.stringify({on})});
-    if (r.ok) { SCREEN_ON = on; if (on) LAST_INPUT = Date.now(); }
+    await fetch("/api/display/power", {method: "POST", headers: {"Content-Type": "application/json"},
+                                       body: JSON.stringify({on: false})});
   } catch (e) { console.error(e); }
 }
-function syncScreen(on) {             // server state changed elsewhere (planner on/off)
-  if (on && !SCREEN_ON) LAST_INPUT = Date.now();
-  SCREEN_ON = on;
-}
-function inKeepOn(span) {
-  if (!span) return false;
-  const [a, b] = span.split("-").map(t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; });
-  const n = new Date(), m = n.getHours() * 60 + n.getMinutes();
-  return a <= b ? m >= a && m < b : m >= a || m < b;   // allow overnight spans
-}
-document.addEventListener("pointerdown", e => {
-  LAST_INPUT = Date.now();
-  if (!SCREEN_ON || Date.now() < SWALLOW_UNTIL) {
-    e.stopPropagation(); e.preventDefault();
-    if (!SCREEN_ON) { SCREEN_ON = true; SWALLOW_UNTIL = Date.now() + 800; screenPower(true); }
-  }
-}, true);
-document.addEventListener("click", e => { if (Date.now() < SWALLOW_UNTIL) { e.stopPropagation(); e.preventDefault(); } }, true);
-setInterval(() => {
-  const cfg = DATA && DATA.display; if (!cfg) return;
-  const keep = inKeepOn(cfg.keep_on);
-  if (!SCREEN_ON && keep) { screenPower(true); return; }
-  if (SCREEN_ON && !keep && cfg.idle_minutes > 0 && Date.now() - LAST_INPUT > cfg.idle_minutes * 60000) screenPower(false);
-}, 15000);
 
 function dimCheck(d) {
   // Dim the panel between sunset+1h and sunrise-30m (set ?nodim to disable)
@@ -466,7 +439,6 @@ setInterval(async () => {
     if (BOOT_VERSION === null) { BOOT_VERSION = j.version; PLANS_REV = j.plans_rev; }
     else if (j.version !== BOOT_VERSION) location.reload();
     else if (j.plans_rev !== PLANS_REV) { PLANS_REV = j.plans_rev; load(); }  // a plan was saved
-    if (j.screen_on !== undefined) syncScreen(j.screen_on);
   } catch (e) { /* server restarting — try again next tick */ }
 }, 20000);
 </script>

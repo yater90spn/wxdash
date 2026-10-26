@@ -46,12 +46,15 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
 ## Screen power
-- `wxdash/display.py` runs `wlopm --on/--off '*'` (DPMS on labwc; install.sh apt-installs
-  wlopm). Panel goes to standby but touch still reaches Chromium, so a tap wakes it.
-- The dashboard page decides: off after `display.idle_minutes` with no touch (0 = never),
-  except during `display.keep_on` hours; first tap after off is swallowed. Settings and
-  On/Off buttons are in the planner's Display section (`/api/display`, `/api/display/power`).
-  "⏻ Screen off" button on the dashboard. Not yet verified on the real panel that touch wakes it.
+- `wxdash/display.py` runs `wlopm --on/--off '*'` (DPMS on labwc; install.sh apt-installs wlopm).
+- **Tap-to-wake does NOT work on this panel** (tested 2026-10-25 with deploy/screen-test.sh):
+  in DPMS standby the Corsair re-enumerates its USB touch controller ("wch.cn TouchScreen",
+  27c0:0859) and sends no touch events until the screen is on again. So no idle-off.
+- Instead a server thread (`display.run_schedule`) applies `display.on_hours` (default
+  06:00-23:00, None = always on) at the boundaries only, so manual Turn on/off from the
+  planner holds until the next boundary. Dashboard has a "⏻ Screen off" button.
+- Pending: `deploy/dim-test.sh` checks whether brightness can be set over DDC/CI. If yes,
+  idle-dim (monitor stays awake, touch keeps working) is the better daytime option.
 
 ## Hardware / OS
 - Raspberry Pi 4B, Raspberry Pi OS **Trixie** (Wayland, **labwc**).
@@ -60,8 +63,8 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
 - Display: Corsair Xeneon Edge 14.5" 2560×720 touchscreen. Video over micro-HDMI→HDMI.
   Touch only works over the screen's USB-C data link (HDMI is video only). The screen
   needs 5V/2A, more than the Pi's USB ports reliably supply, so it should be powered
-  through a powered USB hub or USB-C power+data splitter. Touch under Linux not yet
-  confirmed: check `sudo libinput list-devices`.
+  through a powered USB hub or USB-C power+data splitter. Touch works (taps register;
+  swipes needed the mouse-drag fallback).
 
 ## Deployment
 - Code lives at github.com/yater90spn/wxdash (private). Changes are pushed there;

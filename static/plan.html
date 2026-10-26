@@ -197,22 +197,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
       <section class="panel" id="displayPanel">
         <h2>Display</h2>
-        <p class="help">The screen turns off when nobody has touched it for a while; tap it to wake it. During keep-on hours it stays on.</p>
+        <p class="help">The screen turns itself on and off at set times each day. Tapping can't wake the Corsair from standby, so use these buttons to turn it on outside those hours. It stays that way until the next scheduled change.</p>
         <div class="row" style="align-items:center">
           <span id="dispState" style="flex:none"></span>
           <span></span>
           <button class="btn ghost small shrink" type="button" id="dispOn">Turn on</button>
           <button class="btn ghost small shrink" type="button" id="dispOff">Turn off</button>
         </div>
-        <div class="field"><label for="dispIdle">Turn off after</label>
-          <select id="dispIdle">
-            <option value="0">Never</option><option value="2">2 minutes</option><option value="5">5 minutes</option>
-            <option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option>
-            <option value="60">1 hour</option><option value="120">2 hours</option>
-          </select></div>
-        <label class="check"><input type="checkbox" id="keepOn"> Keep it on between</label>
-        <div class="row" style="margin-top:8px"><input type="time" id="keep1" value="06:30" aria-label="Keep on from">
-          <span class="shrink" style="color:var(--ink3)">and</span><input type="time" id="keep2" value="08:30" aria-label="Keep on until"></div>
+        <label class="check"><input type="checkbox" id="schedOn"> Only on between</label>
+        <div class="row" style="margin-top:8px"><input type="time" id="on1" value="06:00" aria-label="On at">
+          <span class="shrink" style="color:var(--ink3)">and</span><input type="time" id="on2" value="23:00" aria-label="Off at"></div>
         <div class="error" id="dispErr"></div>
       </section>
 
@@ -482,23 +476,19 @@ function setupPlaceSearch() {
 function renderDisplay() {
   const d = P.display, pw = d.power || {};
   $("#dispState").innerHTML = `Screen is <b>${pw.on ? "on" : "off"}</b>`;
-  $("#dispIdle").value = String(d.idle_minutes);
-  if (![...$("#dispIdle").options].some(o => o.value === String(d.idle_minutes)))
-    $("#dispIdle").insertAdjacentHTML("beforeend", `<option value="${d.idle_minutes}" selected>${d.idle_minutes} minutes</option>`);
-  $("#keepOn").checked = !!d.keep_on;
-  if (d.keep_on) { const [a, b] = d.keep_on.split("-"); $("#keep1").value = a; $("#keep2").value = b === "24:00" ? "23:59" : b; }
-  $("#keep1").disabled = $("#keep2").disabled = !d.keep_on;
+  $("#schedOn").checked = !!d.on_hours;
+  if (d.on_hours) { const [a, b] = d.on_hours.split("-"); $("#on1").value = a.padStart(5, "0"); $("#on2").value = b === "24:00" ? "23:59" : b.padStart(5, "0"); }
+  $("#on1").disabled = $("#on2").disabled = !d.on_hours;
   $("#dispErr").textContent = pw.error ? pw.error :
     (!pw.available && !P.demo ? "Screen control isn't installed on the Pi yet; it's added automatically with the next update." : "");
 }
 function setupDisplay() {
   const save = async patch => {
-    try { await api("PUT", "/api/display", patch); await load(); toast("Saved"); }
+    try { $("#dispErr").textContent = ""; await api("PUT", "/api/display", patch); await load(); toast("Saved"); }
     catch (e) { $("#dispErr").textContent = e.message; }
   };
-  $("#dispIdle").onchange = () => save({idle_minutes: +$("#dispIdle").value});
-  const keep = () => save({keep_on: $("#keepOn").checked ? `${$("#keep1").value}-${$("#keep2").value}` : ""});
-  $("#keepOn").onchange = keep; $("#keep1").onchange = keep; $("#keep2").onchange = keep;
+  const sched = () => save({on_hours: $("#schedOn").checked ? `${$("#on1").value}-${$("#on2").value}` : ""});
+  $("#schedOn").onchange = sched; $("#on1").onchange = sched; $("#on2").onchange = sched;
   const power = async on => {
     try { await api("POST", "/api/display/power", {on}); await load(); toast(on ? "Screen on" : "Screen off"); }
     catch (e) { $("#dispErr").textContent = e.message; }
