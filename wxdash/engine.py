@@ -227,6 +227,7 @@ class Engine:
             "start": start.isoformat(),
             "end": end.isoformat(),
             "location": place.get("name", loc),
+            "loc_key": loc,
             "live": start <= now < end,
             "flex": bool(flex),
             "suggested": False,
@@ -294,18 +295,22 @@ class Engine:
         return sugg, status
 
     # ---------- dashboard ----------
-    def dashboard(self, now=None):
-        self.errors = []
-        self._fetched = {}
-        now = now or datetime.now(self.tz)
-        home_key = self.cfg.get("home", "home")
-        hours, sun, _ = self.data_for(home_key)
-        cur = now.replace(minute=0, second=0, microsecond=0)
-        idx = next((i for i, h in enumerate(hours) if h["time"] >= cur), 0)
-        n = self.cfg.get("timeline_hours", 36)
-        tl = []
-        for h in hours[idx: idx + n]:
-            tl.append({
+    def _cached_hours(self, key):
+        """Hourly data for a place, reusing whichever cached fetch exists."""
+        for ck in ((key, False), (key, True)):
+            hit = self._cache.get(ck)
+            if hit:
+                return hit[1]
+        return self.data_for(key)[0]
+
+    @staticmethod
+    def _timeline(hours, idx):
+        """Every remaining forecast hour from idx (the page shows ~36 at a time)."""
+        out = []
+        for h in hours[idx:]:
+            if h.get("temperature_2m") is None:
+                continue
+            out.append({
                 "t": h["time"].isoformat(),
                 "temp": h.get("temperature_2m"),
                 "feels": h.get("apparent_temperature"),
@@ -322,6 +327,17 @@ class Engine:
                 "src": (h.get("source") or "").replace("ncep_", "").split("_")[0].upper(),
                 "spread": round(h["spread"].get("temperature_2m", 0), 1),
             })
+        return out
+
+    def dashboard(self, now=None):
+        self.errors = []
+        self._fetched = {}
+        now = now or datetime.now(self.tz)
+        home_key = self.cfg.get("home", "home")
+        hours, sun, _ = self.data_for(home_key)
+        cur = now.replace(minute=0, second=0, microsecond=0)
+        idx = next((i for i, h in enumerate(hours) if h["time"] >= cur), 0)
+        tl = self._timeline(hours, idx)
         h0 = hours[idx]
         today_sun = next(((a, b) for a, b in sun if a.date() == now.date()), None)
         now_block = {
@@ -347,6 +363,14 @@ class Engine:
         cards = self.build_cards(now, data)
         sugg, _ = self.watch_scan(now, data, cards)
         cards = sorted(cards + sugg, key=lambda c: c["start"])
+        timelines = {home_key: tl}
+        for key in {c["loc_key"] for c in cards} - {home_key}:
+            try:
+                h2 = self._cached_hours(key)
+                i2 = next((i for i, h in enumerate(h2) if h["time"] >= cur), 0)
+                timelines[key] = self._timeline(h2, i2)
+            except Exception as ex:
+                self.errors.append(f"timeline {key}: {ex}")
         oldest = min(self._fetched.values()) if self._fetched else time.time()
         return {
             "data_age_min": round((time.time() - oldest) / 60),
@@ -356,6 +380,9 @@ class Engine:
             "demo": self.demo,
             "now": now_block,
             "timeline": tl,
+            "timelines": timelines,
+            "home_key": home_key,
+            "timeline_visible_hours": self.cfg.get("timeline_hours", 36),
             "cards": cards,
             "errors": self.errors,
         }

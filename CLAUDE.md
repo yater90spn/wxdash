@@ -38,7 +38,11 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
 - `static/plan.html` — planner (desktop + phone). `app.py` has the JSON API.
 - `static/index.html` — fixed 2560×720 layout: "now" panel left, swipeable
   activity cards, 36-hour strip (temp, feels-like, rain %, wind). Tap a card to
-  highlight its window. Dims at night unless URL has `?nodim`. Polls `/api/version`
+  highlight its window. Dims at night unless URL has `?nodim`. Bottom strip covers the
+  whole forecast (`timeline_hours` = hours visible at once), drag/swipe to scroll; selecting
+  a card scrolls to it and shows that card's place (`timelines[loc_key]`); "← Now" button
+  and a 3-minute idle reset return it to now/home. Mouse-drag scrolling exists because the
+  Pi's Chromium may deliver panel touches as mouse events. Polls `/api/version`
   every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
 ## Hardware / OS

@@ -4,7 +4,7 @@ home: home                 # location used for the "now" panel and hourly strip
 refresh_minutes: 30        # HRRR updates hourly; 30 min keeps well under Open-Meteo's free limits
 forecast_days: 7
 lookahead_days: 7          # days of scheduled activities to show (weekend items stay visible all week)
-timeline_hours: 36
+timeline_hours: 36         # hours visible at once on the bottom strip (swipe for the rest of the week)
 
 # Open-Meteo model ids, in blend priority order (first non-null wins per hour;
 # HRRR runs out after ~18–48 h and NBM/GFS take over automatically).

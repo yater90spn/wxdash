@@ -73,8 +73,20 @@ body.dim{filter:brightness(.55)}
 .empty{color:var(--ink3);font-size:22px;padding:40px}
 
 .timeline{background:var(--panel);border-radius:18px;padding:8px 14px 6px;position:relative;min-height:0;overflow:hidden}
-.timeline svg{display:block;width:100%;height:100%}
-.tl-legend{position:absolute;left:70px;top:8px;font-size:13px;color:var(--ink3);display:flex;gap:16px}
+.tl-scroll{position:absolute;left:58px;right:14px;top:8px;bottom:6px;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;touch-action:pan-x;overscroll-behavior-x:contain}
+.tl-scroll::-webkit-scrollbar{display:none}
+.tl-scroll svg{display:block;height:100%}
+.tl-axis{position:absolute;left:14px;top:8px;width:44px;bottom:6px;overflow:visible}
+.tl-head{position:absolute;left:70px;right:22px;top:6px;display:flex;align-items:center;gap:16px;font-size:13px;color:var(--ink3);pointer-events:none;z-index:2}
+.tl-head .place{color:var(--ink);font-weight:600;font-size:14px;background:var(--panel);padding:2px 8px;border-radius:6px}
+.tl-head .place.away{color:var(--s4)}
+.tl-head .day{color:var(--ink2);font-weight:600;background:var(--panel);padding:2px 8px;border-radius:6px}
+.tl-head .spacer{flex:1}
+.tl-now{pointer-events:auto;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:999px;
+  padding:6px 16px;font:600 15px/1 inherit;cursor:pointer;visibility:hidden}
+.tl-now.show{visibility:visible}
+.tl-legend{display:flex;gap:16px;background:var(--panel);padding:2px 8px;border-radius:6px}
 .tl-legend span::before{content:"";display:inline-block;width:14px;height:3px;margin-right:6px;vertical-align:middle;background:currentColor}
 </style>
 </head>
@@ -84,12 +96,19 @@ body.dim{filter:brightness(.55)}
   <section class="main">
     <div class="cards" id="cards"></div>
     <div class="timeline">
-      <div class="tl-legend">
-        <span style="color:var(--temp)">Temp</span>
-        <span style="color:var(--ink3)">Feels like</span>
-        <span style="color:var(--rain)">Rain chance</span>
+      <svg class="tl-axis" id="tlAxis"></svg>
+      <div class="tl-scroll" id="tlScroll"><svg id="tl"></svg></div>
+      <div class="tl-head">
+        <span class="place" id="tlPlace"></span>
+        <span class="day" id="tlDay"></span>
+        <span class="tl-legend">
+          <span style="color:var(--temp)">Temp</span>
+          <span style="color:var(--ink3)">Feels like</span>
+          <span style="color:var(--rain)">Rain chance</span>
+        </span>
+        <span class="spacer"></span>
+        <button class="tl-now" id="tlNow" type="button">← Now</button>
       </div>
-      <svg id="tl"></svg>
     </div>
   </section>
 </div>
@@ -181,6 +200,7 @@ function renderCards(d) {
     SELECTED = SELECTED === card.dataset.id ? null : card.dataset.id;
     el.querySelectorAll(".card").forEach(c => c.classList.toggle("sel", c.dataset.id === SELECTED));
     renderTimeline(DATA);
+    jumpTimeline();
   }));
   updateEdges();
 }
@@ -195,11 +215,10 @@ function updateEdges() {
   el.classList.toggle("more-l", el.scrollLeft > 4);
   el.classList.toggle("more-r", el.scrollLeft < max - 4);
 }
-(function setupDrag() {
-  const el = document.getElementById("cards");
+// Drag-to-scroll for mouse/pen input (see note above). snapStep: px to snap to, or null
+// for free scrolling with a little glide.
+function dragScroll(el, snapStep, onScroll) {
   let down = null, dragged = false, samples = [];
-  const STEP = () => { const c = el.querySelector(".card"); return c ? c.offsetWidth + 14 : 418; };
-
   el.addEventListener("pointerdown", e => {
     if (e.pointerType === "touch") return;          // browser handles real touch panning
     down = {x: e.clientX, left: el.scrollLeft, id: e.pointerId};
@@ -222,71 +241,125 @@ function updateEdges() {
     if (dragged) {
       const a = samples[0], b = samples[samples.length - 1];
       const v = (b.x - a.x) / Math.max(1, b.t - a.t);   // px per ms; negative = flick left
-      const step = STEP();
-      let idx = Math.round(el.scrollLeft / step);
-      if (Math.abs(v) > 0.4) idx = v < 0 ? Math.ceil(el.scrollLeft / step) : Math.floor(el.scrollLeft / step);
-      if (Math.abs(v) > 1.5) idx += v < 0 ? 1 : -1;        // hard flick: one more card
-      el.scrollTo({left: idx * step, behavior: "smooth"});
+      if (snapStep) {
+        const step = snapStep();
+        let idx = Math.round(el.scrollLeft / step);
+        if (Math.abs(v) > 0.4) idx = v < 0 ? Math.ceil(el.scrollLeft / step) : Math.floor(el.scrollLeft / step);
+        if (Math.abs(v) > 1.5) idx += v < 0 ? 1 : -1;      // hard flick: one more card
+        el.scrollTo({left: idx * step, behavior: "smooth"});
+      } else if (Math.abs(v) > 0.3) {
+        el.scrollBy({left: -v * 350, behavior: "smooth"}); // glide after a flick
+      }
       setTimeout(() => el.classList.remove("dragging"), 350);
     }
     down = null;
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
-  // A drag must not also count as a tap that selects a card
+  // A drag must not also count as a tap
   el.addEventListener("click", e => { if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; } }, true);
-  el.addEventListener("scroll", updateEdges, {passive: true});
+  if (onScroll) el.addEventListener("scroll", onScroll, {passive: true});
   // Mouse wheel / trackpad: vertical wheel scrolls sideways
   el.addEventListener("wheel", e => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
   }, {passive: false});
-  window.addEventListener("resize", updateEdges);
+}
+(function () {
+  const cards = document.getElementById("cards");
+  dragScroll(cards, () => { const c = cards.querySelector(".card"); return c ? c.offsetWidth + 14 : 418; }, updateEdges);
+  dragScroll(document.getElementById("tlScroll"), null, tlScrolled);
+  document.getElementById("tlNow").addEventListener("click", () => {
+    if (SELECTED) { SELECTED = null; document.querySelectorAll(".card.sel").forEach(c => c.classList.remove("sel")); renderTimeline(DATA); }
+    document.getElementById("tlScroll").scrollTo({left: 0, behavior: "smooth"});
+  });
+  window.addEventListener("resize", () => { updateEdges(); if (DATA) renderTimeline(DATA); });
+  // Kiosk: after 3 idle minutes, clear the selection and return the strip to now
+  let idle;
+  const poke = () => { clearTimeout(idle); idle = setTimeout(() => {
+    if (SELECTED) { SELECTED = null; document.querySelectorAll(".card.sel").forEach(c => c.classList.remove("sel")); renderTimeline(DATA); }
+    document.getElementById("tlScroll").scrollTo({left: 0, behavior: "smooth"});
+  }, 180000); };
+  document.addEventListener("pointerdown", poke); poke();
 })();
 
+let TL = null;   // geometry of the rendered strip, for scrolling and the day label
+
+function tlScrolled() {
+  if (!TL) return;
+  const sc = document.getElementById("tlScroll");
+  document.getElementById("tlNow").classList.toggle("show", sc.scrollLeft > TL.cw * 3);
+  // Label the selected card's day while it's on screen; otherwise the day at the left edge
+  const c = SELECTED && DATA.cards.find(x => x.id === SELECTED);
+  const cx = c ? TL.xt(new Date(c.start).getTime()) : -1;
+  const i = Math.min(TL.tl.length - 1, Math.max(0, Math.floor(sc.scrollLeft / TL.cw)));
+  const dt = c && cx >= sc.scrollLeft && cx < sc.scrollLeft + sc.clientWidth ? new Date(c.start) : new Date(TL.tl[i].t);
+  document.getElementById("tlDay").textContent = dt.toLocaleDateString([], {weekday: "long", month: "short", day: "numeric"});
+}
+
+function jumpTimeline() {
+  // Put the selected card's window near the left edge (a few hours of lead-in); no selection = now
+  const sc = document.getElementById("tlScroll");
+  const c = DATA && DATA.cards.find(x => x.id === SELECTED);
+  if (!c || !TL) { sc.scrollTo({left: 0, behavior: "smooth"}); return; }
+  const xa = TL.xt(new Date(c.start).getTime());
+  sc.scrollTo({left: Math.max(0, xa - TL.cw * 3), behavior: "smooth"});
+}
+
 function renderTimeline(d) {
-  const svg = document.getElementById("tl");
-  const W = svg.clientWidth, H = svg.clientHeight;
-  const tl = d.timeline; if (!tl.length) return;
-  const padL = 44, padR = 14, n = tl.length, cw = (W - padL - padR) / n;
-  const x = i => padL + i * cw + cw / 2;
+  const sc = document.getElementById("tlScroll"), svg = document.getElementById("tl"), axis = document.getElementById("tlAxis");
+  // Show the selected card's place; otherwise home
+  const sel = d.cards.find(c => c.id === SELECTED);
+  const key = sel && d.timelines && d.timelines[sel.loc_key] ? sel.loc_key : d.home_key;
+  const tl = (d.timelines && d.timelines[key]) || d.timeline; if (!tl || !tl.length) return;
+  const placeEl = document.getElementById("tlPlace");
+  placeEl.textContent = key === d.home_key ? d.place : sel.location;
+  placeEl.classList.toggle("away", key !== d.home_key);
+
+  const VW = sc.clientWidth, H = sc.clientHeight, padR = 12;
+  const n = tl.length, cw = VW / (d.timeline_visible_hours || 36), W = n * cw + padR;
+  const x = i => i * cw + cw / 2;
   const tTop = 48, tBot = 134, rTop = 142, rBot = 176, wY = 198, hY = 220;
   const temps = tl.flatMap(h => [h.temp, h.feels]).filter(v => v != null);
   const lo = Math.floor(Math.min(...temps) / 5) * 5 - 2, hi = Math.ceil(Math.max(...temps) / 5) * 5 + 2;
   const y = v => tBot - (v - lo) / (hi - lo) * (tBot - tTop);
   const t0 = new Date(tl[0].t).getTime();
-  const xt = ms => padL + (ms - t0) / 3600000 * cw;
+  const xt = ms => (ms - t0) / 3600000 * cw;
+  TL = {cw, xt, tl};
   let s = "";
 
   // Activity windows as shaded bands (selected one highlighted)
   for (const c of d.cards) {
     const a = xt(new Date(c.start).getTime()), b = xt(new Date(c.end).getTime());
-    if (b < padL || a > W - padR) continue;
-    const xa = Math.max(padL, a), xb = Math.min(W - padR, b), sel = c.id === SELECTED;
+    if (b < 0 || a > W) continue;
+    const xa = Math.max(0, a), xb = Math.min(W, b), isSel = c.id === SELECTED;
     s += `<rect x="${xa}" y="${tTop - 22}" width="${xb - xa}" height="${hY - tTop + 14}" rx="6"
-            fill="${sel ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.035)"}" ${sel ? 'stroke="rgba(255,255,255,.5)"' : ""}/>`;
-    if (sel || (!SELECTED && (xb - xa) > c.title.length * 7.5 + 10))
-      s += `<text x="${xa + 6}" y="${tTop - 6}" fill="${sel ? "var(--ink)" : "var(--ink3)"}" font-size="13" font-weight="${sel ? 600 : 400}">${esc(c.title)}</text>`;
+            fill="${isSel ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.035)"}" ${isSel ? 'stroke="rgba(255,255,255,.5)"' : ""}/>`;
+    if (isSel || (!SELECTED && (xb - xa) > c.title.length * 7.5 + 10))
+      s += `<text x="${xa + 6}" y="${tTop - 6}" fill="${isSel ? "var(--ink)" : "var(--ink3)"}" font-size="13" font-weight="${isSel ? 600 : 400}">${esc(c.title)}</text>`;
   }
-  // Day separators + night shading
+  // Night shading + day separators
   tl.forEach((h, i) => {
     const dt = new Date(h.t);
-    if (!h.day) s += `<rect x="${padL + i * cw}" y="${tTop}" width="${cw + .5}" height="${rBot - tTop}" fill="rgba(0,0,0,.25)"/>`;
+    if (!h.day) s += `<rect x="${i * cw}" y="${tTop}" width="${cw + .5}" height="${rBot - tTop}" fill="rgba(0,0,0,.25)"/>`;
     if (dt.getHours() === 0 && i > 0) {
-      s += `<line x1="${padL + i * cw}" y1="${tTop - 18}" x2="${padL + i * cw}" y2="${hY + 4}" stroke="var(--line)" stroke-width="2"/>`;
-      s += `<text x="${padL + i * cw + 6}" y="${hY + 4}" fill="var(--ink2)" font-size="13" font-weight="600">${dt.toLocaleDateString([], {weekday:"short"})}</text>`;
+      s += `<line x1="${i * cw}" y1="${tTop - 18}" x2="${i * cw}" y2="${hY + 4}" stroke="var(--line)" stroke-width="2"/>`;
+      s += `<text x="${i * cw + 6}" y="${hY + 4}" fill="var(--ink2)" font-size="13" font-weight="600">${dt.toLocaleDateString([], {weekday:"short"})}</text>`;
     }
   });
-  // Temperature gridlines
-  for (let v = Math.ceil(lo / 10) * 10; v <= hi; v += 10)
-    s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-dasharray="2 5"/>
-          <text x="${padL - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--ink3)" font-size="13">${v}°</text>`;
+  // Temperature gridlines (labels live on the fixed axis)
+  let ax = "";
+  for (let v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) {
+    s += `<line x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-dasharray="2 5"/>`;
+    ax += `<text x="38" y="${y(v) + 4}" text-anchor="end" fill="var(--ink3)" font-size="13">${v}°</text>`;
+  }
+  ax += `<text x="0" y="${rBot - 4}" fill="var(--rain)" font-size="12">rain</text><text x="0" y="${wY + 5}" fill="var(--wind)" font-size="12">mph</text>`;
   // Rain probability bars
   tl.forEach((h, i) => {
     const p = (h.pop || 0) / 100, bh = p * (rBot - rTop);
-    if (p > .02) s += `<rect x="${padL + i * cw + 3}" y="${rBot - bh}" width="${cw - 6}" height="${bh}" rx="2" fill="var(--rain)" opacity="${.35 + .6 * p}"/>`;
+    if (p > .02) s += `<rect x="${i * cw + 3}" y="${rBot - bh}" width="${cw - 6}" height="${bh}" rx="2" fill="var(--rain)" opacity="${.35 + .6 * p}"/>`;
     if ((h.pop || 0) >= 30 && i % 2 === 0) s += `<text x="${x(i)}" y="${rBot - bh - 4}" text-anchor="middle" fill="var(--rain)" font-size="12">${r0(h.pop)}%</text>`;
   });
-  s += `<line x1="${padL}" x2="${W - padR}" y1="${rBot}" y2="${rBot}" stroke="var(--line)"/>`;
+  s += `<line x1="0" x2="${W}" y1="${rBot}" y2="${rBot}" stroke="var(--line)"/>`;
   // Feels-like and temp lines
   const path = k => tl.map((h, i) => h[k] == null ? "" : `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h[k]).toFixed(1)}`).join("");
   s += `<path d="${path("feels")}" fill="none" stroke="var(--ink3)" stroke-width="2" stroke-dasharray="5 4"/>`;
@@ -303,9 +376,13 @@ function renderTimeline(d) {
   // Hour labels
   tl.forEach((h, i) => { const dt = new Date(h.t);
     if (i % 2 === 0 && dt.getHours() !== 0) s += `<text x="${x(i)}" y="${hY + 4}" text-anchor="middle" fill="var(--ink3)" font-size="13">${hourLbl(dt)}</text>`; });
-  s += `<text x="4" y="${rBot - 4}" fill="var(--rain)" font-size="12">rain</text><text x="4" y="${wY + 5}" fill="var(--wind)" font-size="12">mph</text>`;
+
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = s;
+  axis.setAttribute("viewBox", `0 0 44 ${H}`); axis.setAttribute("height", H);
+  axis.innerHTML = ax;
+  tlScrolled();
 }
 
 function render(d) { DATA = d; renderNow(d); renderCards(d); renderTimeline(d); dimCheck(d); }
