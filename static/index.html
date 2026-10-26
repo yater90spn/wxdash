@@ -36,7 +36,13 @@ body.dim{filter:brightness(.55)}
 /* ── Right side ──────────────────── */
 .main{display:grid;grid-template-rows:minmax(0,1fr) 240px;gap:14px;min-width:0;min-height:0;height:692px}
 .cards{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
-  -webkit-overflow-scrolling:touch}
+  -webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain}
+.cards.dragging{scroll-snap-type:none}
+.cards.dragging .card{pointer-events:none}
+/* fade the edge(s) where more cards are off-screen */
+.cards.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 110px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 110px),transparent)}
+.cards.more-l{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 110px),transparent);mask-image:linear-gradient(to left,#000 calc(100% - 110px),transparent)}
+.cards.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 110px,#000 calc(100% - 110px),transparent);mask-image:linear-gradient(to right,transparent,#000 110px,#000 calc(100% - 110px),transparent)}
 .cards::-webkit-scrollbar{display:none}
 .card{flex:0 0 404px;min-height:0;scroll-snap-align:start;background:var(--panel);border-radius:18px;
   padding:16px 20px 14px;display:flex;flex-direction:column;border:2px solid transparent;
@@ -176,7 +182,66 @@ function renderCards(d) {
     el.querySelectorAll(".card").forEach(c => c.classList.toggle("sel", c.dataset.id === SELECTED));
     renderTimeline(DATA);
   }));
+  updateEdges();
 }
+
+// ---------- swipe / drag to scroll the cards ----------
+// Native touch panning works when Chromium sees a real touchscreen. Some panels
+// (or Wayland setups) deliver touch as mouse events instead, which never scroll,
+// so we also scroll on mouse/pen drags ourselves and snap to the nearest card.
+function updateEdges() {
+  const el = document.getElementById("cards");
+  const max = el.scrollWidth - el.clientWidth;
+  el.classList.toggle("more-l", el.scrollLeft > 4);
+  el.classList.toggle("more-r", el.scrollLeft < max - 4);
+}
+(function setupDrag() {
+  const el = document.getElementById("cards");
+  let down = null, dragged = false, samples = [];
+  const STEP = () => { const c = el.querySelector(".card"); return c ? c.offsetWidth + 14 : 418; };
+
+  el.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch") return;          // browser handles real touch panning
+    down = {x: e.clientX, left: el.scrollLeft, id: e.pointerId};
+    dragged = false; samples = [{x: e.clientX, t: e.timeStamp}];
+  });
+  el.addEventListener("pointermove", e => {
+    if (!down || e.pointerId !== down.id) return;
+    const dx = e.clientX - down.x;
+    if (!dragged && Math.abs(dx) > 10) {
+      dragged = true; el.classList.add("dragging");
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    if (dragged) {
+      el.scrollLeft = down.left - dx;
+      samples.push({x: e.clientX, t: e.timeStamp}); if (samples.length > 6) samples.shift();
+    }
+  });
+  const end = e => {
+    if (!down || e.pointerId !== down.id) return;
+    if (dragged) {
+      const a = samples[0], b = samples[samples.length - 1];
+      const v = (b.x - a.x) / Math.max(1, b.t - a.t);   // px per ms; negative = flick left
+      const step = STEP();
+      let idx = Math.round(el.scrollLeft / step);
+      if (Math.abs(v) > 0.4) idx = v < 0 ? Math.ceil(el.scrollLeft / step) : Math.floor(el.scrollLeft / step);
+      if (Math.abs(v) > 1.5) idx += v < 0 ? 1 : -1;        // hard flick: one more card
+      el.scrollTo({left: idx * step, behavior: "smooth"});
+      setTimeout(() => el.classList.remove("dragging"), 350);
+    }
+    down = null;
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  // A drag must not also count as a tap that selects a card
+  el.addEventListener("click", e => { if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; } }, true);
+  el.addEventListener("scroll", updateEdges, {passive: true});
+  // Mouse wheel / trackpad: vertical wheel scrolls sideways
+  el.addEventListener("wheel", e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
+  }, {passive: false});
+  window.addEventListener("resize", updateEdges);
+})();
 
 function renderTimeline(d) {
   const svg = document.getElementById("tl");

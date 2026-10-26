@@ -25,4 +25,5 @@ exec "$BROWSER" \
   --noerrdialogs --disable-infobars --no-first-run \
   --disable-session-crashed-bubble --disable-features=Translate \
   --password-store=basic --check-for-update-interval=31536000 \
-  --overscroll-history-navigation=0 --disable-pinch
+  --overscroll-history-navigation=0 --disable-pinch \
+  --touch-events=enabled
