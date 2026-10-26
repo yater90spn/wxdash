@@ -80,7 +80,17 @@ def blend_forecast(raw, tz, priority=None, var_priority=None):
 
     daily = raw.get("daily", {})
     sun = []
-    for sr, ss in zip(daily.get("sunrise", []), daily.get("sunset", [])):
+    # With several models the keys come back suffixed (sunrise_ncep_gfs_seamless, ...).
+    # Sunrise/sunset are astronomical, so any model's copy will do.
+    def first(prefix):
+        for k in [prefix] + sorted(k for k in daily if k.startswith(prefix + "_")):
+            vals_ = [v for v in (daily.get(k) or []) if v is not None]
+            if vals_:
+                return daily[k]
+        return []
+    for sr, ss in zip(first("sunrise"), first("sunset")):
+        if sr is None or ss is None:
+            continue
         sun.append((datetime.fromtimestamp(sr, tz), datetime.fromtimestamp(ss, tz)))
     return out, sun
 

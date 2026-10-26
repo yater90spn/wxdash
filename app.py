@@ -125,6 +125,7 @@ def create_app(config_path, demo=False, data_path=None):
             port = request.host.rsplit(":", 1)[-1] if ":" in request.host else "80"
             planner_url = f"{socket.gethostname()}.local:{port}/plan"
             return jsonify({**engine().dashboard(), "version": VERSION, "planner_url": planner_url,
+                            "quick": quick_buttons(store.load()),
                             "display": {**store.load()["display"], "power": power_state()}})
         except Exception as e:
             logging.exception("dashboard failed")
@@ -230,6 +231,39 @@ def create_app(config_path, demo=False, data_path=None):
             return jsonify(store.update_watch(kind, body(), engine().locations()))
         except (ValidationError, ValueError) as ex:
             return err(str(ex))
+
+    # ---------- quick check ("what's it like if I go now?") ----------
+    QUICK_LABELS = {"surf": "Surf", "sailing": "Sail", "running": "Run", "yardwork": "Yard"}
+
+    def quick_buttons(data):
+        return [{"kind": k, "label": QUICK_LABELS.get(k, k.title()), "location": w["location"]}
+                for k in ("surf", "sailing", "running", "yardwork")
+                if (w := data["watches"].get(k)) and w.get("enabled")]
+
+    @app.get("/api/check/<kind>")
+    def check(kind):
+        e = engine()
+        data = store.load()
+        w = data["watches"].get(kind)
+        if not w:
+            return err("Not a watchable activity", 404)
+        now = datetime.now(e.tz)
+        try:
+            hours = max(1, min(int(request.args.get("hours", 2)), 8))
+            start = request.args.get("start")
+            start = datetime.fromisoformat(start).astimezone(e.tz) if start else now
+        except ValueError:
+            return err("Bad start time or length")
+        card, why = e.quick_check(kind, request.args.get("location") or w["location"], start, hours, now, data)
+        if not card:
+            return err(f"Can't rate that: {why}", 422)
+        last = None
+        try:
+            last = e._cached_hours(w["location"])[-1]["time"].isoformat()
+        except Exception:
+            pass
+        return jsonify({**card, "title": f"{QUICK_LABELS.get(kind, kind.title())} check",
+                        "forecast_until": last})
 
     # ---------- display power ----------
     @app.get("/api/display")

@@ -45,6 +45,17 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Pi's Chromium may deliver panel touches as mouse events. Polls `/api/version`
   every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
+## Quick check (left panel buttons)
+- One button per *enabled* watch (Surf / Sail / Run / Yard) above "⏻ Screen off" in the
+  bottom-left. Tap → pop-up with a card rated for now → +2 h at the watch's place
+  (`GET /api/check/<kind>?start=ISO&hours=N`, `Engine.quick_check`, no minimum score).
+  Pop-up controls: day chips (Today…+6), start hour stepper (Today defaults to "Now";
+  other days default to 7 AM), length 1–4 h. Card shows an after-dark warning
+  (`card.warning`) but never swaps to a daylight window. Closes on outside tap, Close,
+  or 60 s idle; the screen doesn't dim while it's open.
+- Note: Open-Meteo suffixes daily keys per model (sunrise_ncep_…) when several models
+  are requested; blend.py handles that (sunrise/sunset were blank before 2026-10-26).
+
 ## Screen power
 - `wxdash/display.py` runs `wlopm --on/--off '*'` (DPMS on labwc; install.sh apt-installs wlopm).
 - **Tap-to-wake does NOT work on this panel** (tested 2026-10-25 with deploy/screen-test.sh):

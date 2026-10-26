@@ -179,13 +179,16 @@ class Engine:
         cur_hour = now.replace(minute=0, second=0, microsecond=0)
 
         flex = entry.get("flex")
-        span = entry.get("time") if not flex else flex["between"]
-        (h1, m1), (h2, m2) = _span(span)
-        w_start = datetime(d.year, d.month, d.day, h1, m1, tzinfo=self.tz)
-        if (h2, m2) == (24, 0):
-            w_end = datetime(d.year, d.month, d.day, tzinfo=self.tz) + timedelta(days=1)
+        if entry.get("window"):            # explicit datetimes (the dashboard's quick check)
+            w_start, w_end = entry["window"]
         else:
-            w_end = datetime(d.year, d.month, d.day, h2, m2, tzinfo=self.tz)
+            span = entry.get("time") if not flex else flex["between"]
+            (h1, m1), (h2, m2) = _span(span)
+            w_start = datetime(d.year, d.month, d.day, h1, m1, tzinfo=self.tz)
+            if (h2, m2) == (24, 0):
+                w_end = datetime(d.year, d.month, d.day, tzinfo=self.tz) + timedelta(days=1)
+            else:
+                w_end = datetime(d.year, d.month, d.day, h2, m2, tzinfo=self.tz)
         if w_end <= now:
             return None, "that time has already passed"
         sl = [h for h in hours if w_start <= h["time"] < w_end and h["time"] >= cur_hour]
@@ -215,6 +218,7 @@ class Engine:
             sl = sl[best_i:best_i + n]
         card = act.evaluate(sl, ctx)
         start, end = sl[0]["time"], sl[-1]["time"] + timedelta(hours=1)
+        card["warning"] = self._dark_warning(sl, sun)
         day = "Today" if d == now.date() else ("Tomorrow" if d == (now + timedelta(days=1)).date()
                                                else d.strftime("%A"))
         card.update({
@@ -233,6 +237,31 @@ class Engine:
             "suggested": False,
         })
         return card, None
+
+    @staticmethod
+    def _dark_warning(sl, sun):
+        """Warn when part of the window is in the dark (shown on quick-check cards)."""
+        dark = [h for h in sl if not h.get("is_day")]
+        if not dark:
+            return None
+        start, end = sl[0]["time"], sl[-1]["time"] + timedelta(hours=1)
+        sd = next(((a, b) for a, b in sun if a.date() == start.date()), None)
+        fmt = lambda t: t.strftime("%-I:%M %p")
+        if len(dark) == len(sl):
+            return "This whole window is in the dark" + (f" (sunrise {fmt(sd[0])}, sunset {fmt(sd[1])})" if sd else "")
+        if sd and start < sd[0]:
+            return f"Sunrise is {fmt(sd[0])}, so the start is in the dark"
+        if sd and end > sd[1]:
+            part = "most of this window is" if len(dark) * 2 > len(sl) else "the end is"
+            return f"Sunset is {fmt(sd[1])}, so {part} after dark"
+        return "Part of this window is in the dark"
+
+    def quick_check(self, kind, location, start, hours, now, data=None):
+        """Rate one activity from `start` for `hours` (no minimum score)."""
+        start = max(start, now.replace(minute=0, second=0, microsecond=0))
+        entry = {"id": f"check-{kind}", "activity": kind, "location": location,
+                 "window": (start, start + timedelta(hours=hours))}
+        return self.card_for(entry, start.date(), now)
 
     def _entries(self, data):
         entries = [dict(e, source="config") for e in self.cfg.get("schedule") or []]

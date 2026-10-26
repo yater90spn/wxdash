@@ -82,6 +82,8 @@ def fake_forecast(lat, lon, models, tz, days=7):
         daily["time"].append(int(datetime(d.year, d.month, d.day, tzinfo=tz).timestamp()))
         daily["sunrise"].append(int(datetime(d.year, d.month, d.day, 7, 14, tzinfo=tz).timestamp()))
         daily["sunset"].append(int(datetime(d.year, d.month, d.day, 18, 13, tzinfo=tz).timestamp()))
+    if len(models) > 1:   # match the real API: daily keys get a model suffix too
+        daily = {"time": daily["time"], **{f"{k}_{m}": v for k, v in daily.items() if k != "time" for m in models}}
     return {"hourly": hourly, "hourly_units": units, "daily": daily, "_models": models}
 
 
