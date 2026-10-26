@@ -5,6 +5,8 @@ refresh_minutes: 30        # HRRR updates hourly; 30 min keeps well under Open-M
 forecast_days: 7
 lookahead_days: 7          # days of scheduled activities to show (weekend items stay visible all week)
 timeline_hours: 36         # hours visible at once on the bottom strip (swipe for the rest of the week)
+history_hours: 24          # past hours on the strip: actual (NWS station) vs forecast from a day earlier
+# obs_station: KBLM        # NWS station for actuals; default = nearest reporting station
 
 # Open-Meteo model ids, in blend priority order (first non-null wins per hour;
 # HRRR runs out after ~18–48 h and NBM/GFS take over automatically).

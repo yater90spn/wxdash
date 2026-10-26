@@ -61,7 +61,7 @@ def fetch_forecast(lat, lon, models=None, days=7, session=None, timeout=20):
         "daily": "sunrise,sunset",
         "models": ",".join(models),
         "forecast_days": days,
-        "past_hours": 12,  # lets yardwork look back for wet ground
+        "past_hours": 25,  # yardwork looks back for wet ground; the strip shows the past day
         "temperature_unit": "fahrenheit",
         "wind_speed_unit": "mph",
         "precipitation_unit": "inch",

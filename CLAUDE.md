@@ -45,6 +45,19 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Pi's Chromium may deliver panel touches as mouse events. Polls `/api/version`
   every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
+## Past 24 h on the strip (actual vs forecast)
+- Home timeline = `history_hours` (24) past hours + forecast; strip opens scrolled to "now"
+  (`timeline_now_index`); "← Now"/"Now →" button returns. Other places' timelines have no past.
+- `wxdash/sources/history.py`: actual = NWS observations (api.weather.gov, nearest reporting
+  station via /points/…/stations, override with `obs_station:` in config), one obs per hour
+  (closest to the top of the hour); feels-like computed with the BoM apparent-temp formula.
+  Forecast = Open-Meteo Previous Runs API `*_previous_day1` (predicted 24 h before).
+  No precip probability in previous runs, so past rain compares amounts (in).
+  Nothing stored locally; cached like the forecast. Errors show in the left panel meta line.
+- Drawn: actual temp white solid, actual feels white dashed; day-ahead forecast temp
+  orange dashed, feels gray dotted; rain measured = filled bar, forecast = outline.
+- Not yet verified against the live services from the Pi (sandbox can't reach them).
+
 ## Quick check (left panel buttons)
 - One button per *enabled* watch (Surf / Sail / Run / Yard) above "⏻ Screen off" in the
   bottom-left. Tap → pop-up with a card rated for now → +2 h at the watch's place

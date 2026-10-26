@@ -132,3 +132,29 @@ def fake_tides(tz, days):
         events.append((t.replace(second=0, microsecond=0), 4.7 if k % 2 == 0 else 0.1, "H" if k % 2 == 0 else "L"))
         k += 1
     return {"hourly": hourly, "events": events}
+
+
+def fake_history(hours, now):
+    """Day-ahead forecast and 'observed' values that differ a little from the model."""
+    import math
+    out = {}
+    for h in hours:
+        t = h["time"]
+        if t >= now:
+            continue
+        k = t.timestamp() / 3600
+        temp = h.get("temperature_2m")
+        if temp is None:
+            continue
+        out[t] = {
+            "fc_temp": temp + 2.5 * math.sin(k / 5),
+            "fc_feels": (h.get("apparent_temperature") or temp) + 2.5 * math.sin(k / 5),
+            "fc_precip": 0.04 if 8 < (k % 24) < 11 else 0.0,
+            "obs_temp": temp - 1.5 + 1.2 * math.sin(k / 3),
+            "obs_feels": (h.get("apparent_temperature") or temp) - 2 + 1.2 * math.sin(k / 3),
+            "obs_precip": 0.06 if 9 < (k % 24) < 12 else 0.0,
+            "obs_wind": (h.get("wind_speed_10m") or 0) + 2,
+            "obs_gust": (h.get("wind_gusts_10m") or 0) + 3,
+            "obs_dir": h.get("wind_direction_10m"),
+        }
+    return out

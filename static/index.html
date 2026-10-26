@@ -328,14 +328,14 @@ function dragScroll(el, snapStep, onScroll) {
   dragScroll(document.getElementById("tlScroll"), null, tlScrolled);
   document.getElementById("tlNow").addEventListener("click", () => {
     if (SELECTED) { SELECTED = null; document.querySelectorAll(".card.sel").forEach(c => c.classList.remove("sel")); renderTimeline(DATA); }
-    document.getElementById("tlScroll").scrollTo({left: 0, behavior: "smooth"});
+    document.getElementById("tlScroll").scrollTo({left: nowX(), behavior: "smooth"});
   });
   window.addEventListener("resize", () => { updateEdges(); if (DATA) renderTimeline(DATA); });
   // Kiosk: after 3 idle minutes, clear the selection and return the strip to now
   let idle;
   const poke = () => { clearTimeout(idle); idle = setTimeout(() => {
     if (SELECTED) { SELECTED = null; document.querySelectorAll(".card.sel").forEach(c => c.classList.remove("sel")); renderTimeline(DATA); }
-    document.getElementById("tlScroll").scrollTo({left: 0, behavior: "smooth"});
+    document.getElementById("tlScroll").scrollTo({left: nowX(), behavior: "smooth"});
   }, 180000); };
   document.addEventListener("pointerdown", poke); poke();
 })();
@@ -415,10 +415,12 @@ function openCheck(kind) {
 
 let TL = null;   // geometry of the rendered strip, for scrolling and the day label
 
+const nowX = () => TL ? TL.nowIdx * TL.cw : 0;   // scroll position that puts "now" at the left edge
 function tlScrolled() {
   if (!TL) return;
-  const sc = document.getElementById("tlScroll");
-  document.getElementById("tlNow").classList.toggle("show", sc.scrollLeft > TL.cw * 3);
+  const sc = document.getElementById("tlScroll"), off = sc.scrollLeft - nowX(), btn = document.getElementById("tlNow");
+  btn.classList.toggle("show", Math.abs(off) > TL.cw * 3);
+  btn.textContent = off > 0 ? "← Now" : "Now →";
   // Label the selected card's day while it's on screen; otherwise the day at the left edge
   const c = SELECTED && DATA.cards.find(x => x.id === SELECTED);
   const cx = c ? TL.xt(new Date(c.start).getTime()) : -1;
@@ -431,7 +433,7 @@ function jumpTimeline() {
   // Put the selected card's window near the left edge (a few hours of lead-in); no selection = now
   const sc = document.getElementById("tlScroll");
   const c = DATA && DATA.cards.find(x => x.id === SELECTED);
-  if (!c || !TL) { sc.scrollTo({left: 0, behavior: "smooth"}); return; }
+  if (!c || !TL) { sc.scrollTo({left: nowX(), behavior: "smooth"}); return; }
   const xa = TL.xt(new Date(c.start).getTime());
   sc.scrollTo({left: Math.max(0, xa - TL.cw * 3), behavior: "smooth"});
 }
@@ -446,17 +448,30 @@ function renderTimeline(d) {
   placeEl.textContent = key === d.home_key ? d.place : sel.location;
   placeEl.classList.toggle("away", key !== d.home_key);
 
+  const nowIdx = key === d.home_key ? (d.timeline_now_index || 0) : 0;
+  const wasAtNow = !TL || Math.abs(sc.scrollLeft - nowX()) < (TL ? TL.cw : 1);
   const VW = sc.clientWidth, H = sc.clientHeight, padR = 12;
   const n = tl.length, cw = VW / (d.timeline_visible_hours || 36), W = n * cw + padR;
   const x = i => i * cw + cw / 2;
   const tTop = 48, tBot = 134, rTop = 142, rBot = 176, wY = 198, hY = 220;
-  const temps = tl.flatMap(h => [h.temp, h.feels]).filter(v => v != null);
+  const temps = tl.flatMap(h => [h.temp, h.feels, h.obs_temp, h.obs_feels]).filter(v => v != null);
   const lo = Math.floor(Math.min(...temps) / 5) * 5 - 2, hi = Math.ceil(Math.max(...temps) / 5) * 5 + 2;
   const y = v => tBot - (v - lo) / (hi - lo) * (tBot - tTop);
   const t0 = new Date(tl[0].t).getTime();
   const xt = ms => (ms - t0) / 3600000 * cw;
-  TL = {cw, xt, tl};
+  TL = {cw, xt, tl, nowIdx};
   let s = "";
+  // Past day: shaded, with a "Now" marker and a key to the extra lines
+  if (nowIdx > 0) {
+    const nx = nowIdx * cw;
+    s += `<rect x="0" y="${tTop - 22}" width="${nx}" height="${hY - tTop + 14}" fill="rgba(120,140,170,.07)"/>`;
+    s += `<line x1="${nx}" y1="${tTop - 22}" x2="${nx}" y2="${hY - 8}" stroke="var(--ink2)" stroke-width="2" stroke-dasharray="4 4"/>`;
+    s += `<text x="${nx + 6}" y="${tTop - 6}" fill="var(--ink)" font-size="13" font-weight="600">Now</text>`;
+    s += `<text x="${nx - 8}" y="${tTop - 6}" text-anchor="end" fill="var(--ink2)" font-size="13">`
+       + `<tspan fill="#fff" font-weight="600">━ actual</tspan>${d.history_station ? ` (${esc(d.history_station)})` : ""}`
+       + `  <tspan fill="var(--temp)">┅ forecast from a day earlier</tspan>  `
+       + `<tspan fill="var(--rain)">▮ rain measured ▯ rain forecast</tspan></text>`;
+  }
 
   // Activity windows as shaded bands (selected one highlighted)
   for (const c of d.cards) {
@@ -484,19 +499,52 @@ function renderTimeline(d) {
     ax += `<text x="38" y="${y(v) + 4}" text-anchor="end" fill="var(--ink3)" font-size="13">${v}°</text>`;
   }
   ax += `<text x="0" y="${rBot - 4}" fill="var(--rain)" font-size="12">rain</text><text x="0" y="${wY + 5}" fill="var(--wind)" font-size="12">mph</text>`;
-  // Rain probability bars
+  // Past: rain amounts, measured (filled) vs forecast a day earlier (outline); full height = 0.25 in
+  const amtH = a => Math.min(1, (a || 0) / 0.25) * (rBot - rTop);
   tl.forEach((h, i) => {
+    if (!h.past) return;
+    const fh = amtH(h.precip), oh = amtH(h.obs_precip);
+    if (fh > 0.5) s += `<rect x="${i * cw + 3}" y="${rBot - fh}" width="${cw - 6}" height="${fh}" rx="2" fill="none" stroke="var(--rain)" stroke-width="1.5" opacity=".9"/>`;
+    if (oh > 0.5) s += `<rect x="${i * cw + 6}" y="${rBot - oh}" width="${cw - 12}" height="${oh}" rx="2" fill="var(--rain)"/>`;
+    const lab = Math.max(h.obs_precip || 0, h.precip || 0);
+    if (lab >= 0.02) s += `<text x="${x(i)}" y="${rBot - Math.max(fh, oh) - 4}" text-anchor="middle" fill="var(--rain)" font-size="11">${(h.obs_precip || 0).toFixed(2)}″</text>`;
+  });
+  // Future: rain probability bars
+  tl.forEach((h, i) => {
+    if (h.past) return;
     const p = (h.pop || 0) / 100, bh = p * (rBot - rTop);
     if (p > .02) s += `<rect x="${i * cw + 3}" y="${rBot - bh}" width="${cw - 6}" height="${bh}" rx="2" fill="var(--rain)" opacity="${.35 + .6 * p}"/>`;
     if ((h.pop || 0) >= 30 && i % 2 === 0) s += `<text x="${x(i)}" y="${rBot - bh - 4}" text-anchor="middle" fill="var(--rain)" font-size="12">${r0(h.pop)}%</text>`;
   });
   s += `<line x1="0" x2="${W}" y1="${rBot}" y2="${rBot}" stroke="var(--line)"/>`;
-  // Feels-like and temp lines
-  const path = k => tl.map((h, i) => h[k] == null ? "" : `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h[k]).toFixed(1)}`).join("");
-  s += `<path d="${path("feels")}" fill="none" stroke="var(--ink3)" stroke-width="2" stroke-dasharray="5 4"/>`;
-  s += `<path d="${path("temp")}" fill="none" stroke="var(--temp)" stroke-width="3.5" stroke-linejoin="round"/>`;
-  tl.forEach((h, i) => { if (i % 3 === 0 && h.temp != null)
-    s += `<text x="${x(i)}" y="${y(h.temp) - 9}" text-anchor="middle" fill="var(--ink)" font-size="14" font-weight="500">${r0(h.temp)}°</text>`; });
+  // Lines. Future: forecast temp (solid orange) + feels-like (gray dashed).
+  // Past: forecast from a day earlier (thin dashed orange / gray) + actual (white).
+  const path = (k, from, to) => {
+    let d2 = "", pen = false;
+    for (let i = from; i < to; i++) {
+      const v = tl[i][k];
+      if (v == null) { pen = false; continue; }
+      d2 += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true;
+    }
+    return d2;
+  };
+  const N = tl.length;
+  if (nowIdx > 0) {
+    s += `<path d="${path("feels", 0, nowIdx)}" fill="none" stroke="var(--ink3)" stroke-width="1.5" stroke-dasharray="2 4" opacity=".8"/>`;
+    s += `<path d="${path("temp", 0, nowIdx)}" fill="none" stroke="var(--temp)" stroke-width="2.5" stroke-dasharray="7 5" opacity=".85"/>`;
+    s += `<path d="${path("obs_feels", 0, nowIdx)}" fill="none" stroke="#fff" stroke-width="1.8" stroke-dasharray="5 4" opacity=".6"/>`;
+    s += `<path d="${path("obs_temp", 0, nowIdx)}" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/>`;
+  }
+  s += `<path d="${path("feels", nowIdx, N)}" fill="none" stroke="var(--ink3)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  s += `<path d="${path("temp", nowIdx, N)}" fill="none" stroke="var(--temp)" stroke-width="3.5" stroke-linejoin="round"/>`;
+  tl.forEach((h, i) => {
+    if ((i - nowIdx) % 3 !== 0) return;
+    if (h.past) {           // actual (white) above, forecast (orange) below
+      if (h.obs_temp != null) s += `<text x="${x(i)}" y="${y(Math.max(h.obs_temp, h.temp ?? -99)) - 9}" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">${r0(h.obs_temp)}°</text>`;
+      if (h.temp != null) s += `<text x="${x(i)}" y="${y(Math.min(h.temp, h.obs_temp ?? 999)) + 18}" text-anchor="middle" fill="var(--temp)" font-size="12">${r0(h.temp)}°</text>`;
+    } else if (h.temp != null)
+      s += `<text x="${x(i)}" y="${y(h.temp) - 9}" text-anchor="middle" fill="var(--ink)" font-size="14" font-weight="500">${r0(h.temp)}°</text>`;
+  });
   // Wind arrows (point the way the wind blows) + speed, every other hour
   tl.forEach((h, i) => {
     if (i % 2 || h.dir == null) return;
@@ -513,6 +561,7 @@ function renderTimeline(d) {
   svg.innerHTML = s;
   axis.setAttribute("viewBox", `0 0 44 ${H}`); axis.setAttribute("height", H);
   axis.innerHTML = ax;
+  if (wasAtNow && !SELECTED) sc.scrollLeft = nowX();   // first draw, or keep "now" pinned as hours roll over
   tlScrolled();
 }
 

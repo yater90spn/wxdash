@@ -58,6 +58,7 @@ class Engine:
         self._lock = threading.Lock()
         self.errors = []
         self._fetched = {}
+        self._hist = {"at": 0.0, "data": None, "station": None}
 
     # ---------- data ----------
     def locations(self, data=None):
@@ -323,6 +324,70 @@ class Engine:
             }
         return sugg, status
 
+    # ---------- past 24 h: actual vs forecast-a-day-earlier ----------
+    def history(self, now):
+        """{hour: {fc_*, obs_*}} for the home location, cached like the forecast."""
+        ttl = 60 * self.cfg.get("refresh_minutes", 30)
+        h = self._hist
+        if h["data"] is not None and time.time() - h["at"] < ttl:
+            return h["data"], h["station"]
+        p = self._place(self.cfg.get("home", "home"))
+        data, station = {}, None
+        if self.demo:
+            from .demo import fake_history
+            hours, _, _ = self.data_for(self.cfg.get("home", "home"))
+            data, station = fake_history(hours, now), "Demo station"
+        else:
+            from .sources import history as hist
+            try:
+                for t, v in hist.fetch_prev_forecast(p["lat"], p["lon"], self.tz, self.session).items():
+                    data.setdefault(t, {}).update(v)
+            except Exception as ex:
+                self.errors.append(f"past forecast: {ex}")
+            try:
+                sid = self.cfg.get("obs_station")
+                name = sid
+                if not sid:
+                    sid, name = hist.find_station(p["lat"], p["lon"], self.session)
+                for t, v in hist.fetch_observations(sid, self.tz, session=self.session).items():
+                    data.setdefault(t, {}).update(v)
+                station = f"{name} ({sid})" if name and name != sid else sid
+            except Exception as ex:
+                self.errors.append(f"observations: {ex}")
+        if data or h["data"] is None:
+            h.update(at=time.time(), data=data, station=station)
+        return h["data"], h["station"]
+
+    def _past_timeline(self, hours, cur, now):
+        """24 past hours for the strip, each with day-ahead forecast and actuals."""
+        n = int(self.cfg.get("history_hours", 24))
+        if n <= 0:
+            return [], None
+        try:
+            hist, station = self.history(now)
+        except Exception as ex:
+            self.errors.append(f"history: {ex}")
+            return [], None
+        by_time = {h["time"]: h for h in hours}
+        out = []
+        for i in range(n, 0, -1):
+            t = cur - timedelta(hours=i)
+            base = by_time.get(t, {})
+            v = hist.get(t, {})
+            if not base and not v:
+                continue
+            out.append({
+                "t": t.isoformat(), "past": True,
+                "day": base.get("is_day"),
+                "temp": v.get("fc_temp"), "feels": v.get("fc_feels"), "precip": v.get("fc_precip"),
+                "obs_temp": v.get("obs_temp"), "obs_feels": v.get("obs_feels"),
+                "obs_precip": v.get("obs_precip"),
+                "wind": v.get("obs_wind", base.get("wind_speed_10m")),
+                "gust": v.get("obs_gust") if v.get("obs_wind") is not None else base.get("wind_gusts_10m"),
+                "dir": v.get("obs_dir") if v.get("obs_wind") is not None else base.get("wind_direction_10m"),
+            })
+        return out, station
+
     # ---------- dashboard ----------
     def _cached_hours(self, key):
         """Hourly data for a place, reusing whichever cached fetch exists."""
@@ -367,6 +432,7 @@ class Engine:
         cur = now.replace(minute=0, second=0, microsecond=0)
         idx = next((i for i, h in enumerate(hours) if h["time"] >= cur), 0)
         tl = self._timeline(hours, idx)
+        past, station = self._past_timeline(hours, cur, now)
         h0 = hours[idx]
         today_sun = next(((a, b) for a, b in sun if a.date() == now.date()), None)
         now_block = {
@@ -392,7 +458,7 @@ class Engine:
         cards = self.build_cards(now, data)
         sugg, _ = self.watch_scan(now, data, cards)
         cards = sorted(cards + sugg, key=lambda c: c["start"])
-        timelines = {home_key: tl}
+        timelines = {home_key: past + tl}
         for key in {c["loc_key"] for c in cards} - {home_key}:
             try:
                 h2 = self._cached_hours(key)
@@ -412,6 +478,8 @@ class Engine:
             "timelines": timelines,
             "home_key": home_key,
             "timeline_visible_hours": self.cfg.get("timeline_hours", 36),
+            "timeline_now_index": len(past),
+            "history_station": station,
             "cards": cards,
             "errors": self.errors,
         }
