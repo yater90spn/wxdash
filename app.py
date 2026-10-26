@@ -70,7 +70,14 @@ def create_app(config_path, demo=False, data_path=None):
     # Screen on/off schedule (runs in the background for the life of the server)
     import threading
     threading.Thread(target=display.run_schedule, daemon=True,
-                     args=(lambda: store.load()["display"].get("on_hours"), lambda: engine().tz, demo)).start()
+                     args=(lambda: store.load()["display"].get("on_hours"), lambda: engine().tz, demo),
+                     kwargs={"get_bright": lambda: store.load()["display"]["bright"]}).start()
+
+    def power_state():
+        st = display.state()
+        if demo:
+            st["dim_available"] = True
+        return st
 
     def err(msg, code=400):
         return jsonify({"error": msg}), code
@@ -110,7 +117,7 @@ def create_app(config_path, demo=False, data_path=None):
     @app.get("/api/version")
     def version():
         return jsonify({"version": VERSION, "plans_rev": store.revision(),
-                        "screen_on": display.state()["on"]})
+                        "screen_on": display.quick()["on"], "dimmed": display.quick()["dimmed"]})
 
     @app.get("/api/dashboard")
     def dashboard():
@@ -118,7 +125,7 @@ def create_app(config_path, demo=False, data_path=None):
             port = request.host.rsplit(":", 1)[-1] if ":" in request.host else "80"
             planner_url = f"{socket.gethostname()}.local:{port}/plan"
             return jsonify({**engine().dashboard(), "version": VERSION, "planner_url": planner_url,
-                            "display": {**store.load()["display"], "power": display.state()}})
+                            "display": {**store.load()["display"], "power": power_state()}})
         except Exception as e:
             logging.exception("dashboard failed")
             return err(str(e), 503)
@@ -165,7 +172,7 @@ def create_app(config_path, demo=False, data_path=None):
             "plans": plans,
             "watches": data["watches"],
             "watch_status": status,
-            "display": {**data["display"], "power": display.state()},
+            "display": {**data["display"], "power": power_state()},
             "activities": ACTIVITIES,
             "locations": location_list(e, data),
             "lookahead_days": e.cfg.get("lookahead_days", 7),
@@ -227,7 +234,7 @@ def create_app(config_path, demo=False, data_path=None):
     # ---------- display power ----------
     @app.get("/api/display")
     def get_display():
-        return jsonify({**store.load()["display"], "power": display.state()})
+        return jsonify({**store.load()["display"], "power": power_state()})
 
     @app.put("/api/display")
     def put_display():
@@ -237,11 +244,28 @@ def create_app(config_path, demo=False, data_path=None):
         except (ValidationError, ValueError) as ex:
             return err(str(ex))
 
+    @app.post("/api/display/brightness")
+    def display_brightness():
+        """level: "bright" | "dim" (uses saved levels) or a number 0-100 (preview)."""
+        cfg = store.load()["display"]
+        level = body().get("level", "bright")
+        value = cfg["dim"] if level == "dim" else cfg["bright"] if level == "bright" else level
+        try:
+            display.set_brightness(value, dimmed=(level == "dim"), demo=demo)
+            return get_display()
+        except Exception as ex:
+            return err(f"Couldn't change brightness: {ex}", 500)
+
     @app.post("/api/display/power")
     def display_power():
         on = bool(body().get("on", True))
         try:
             display.set_power(on, demo=demo)
+            if on:   # coming back on: make sure it isn't still at the dim level
+                try:
+                    display.set_brightness(store.load()["display"]["bright"], dimmed=False, demo=demo)
+                except Exception:
+                    pass
             return get_display()
         except Exception as ex:
             return err(f"Couldn't turn the screen {'on' if on else 'off'}: {ex}", 500)

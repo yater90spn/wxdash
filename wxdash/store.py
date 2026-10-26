@@ -32,7 +32,9 @@ DEFAULT_WATCHES = {
 
 # Screen power: on during on_hours (e.g. "06:00-23:00"), off outside them; None = always on.
 # (The Corsair can't be woken by touch from standby, so there's no idle-off.)
-DEFAULT_DISPLAY = {"on_hours": "06:00-23:00"}
+DEFAULT_DISPLAY = {"on_hours": "06:00-23:00",
+                   # Daytime: dim after dim_after idle minutes (0 = never); a tap restores `bright`.
+                   "dim_after": 5, "bright": 95, "dim": 0}
 
 TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-4]):[0-5]\d$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -200,6 +202,12 @@ class Store:
                 if k and k.split("-")[0] == k.split("-")[1]:
                     raise ValidationError("Start and end can't be the same")
                 cur["on_hours"] = k or None
+            for k, lo, hi in (("dim_after", 0, 240), ("bright", 1, 100), ("dim", 0, 100)):
+                if k in upd:
+                    v = int(upd[k])
+                    if not lo <= v <= hi:
+                        raise ValidationError(f"{k} must be {lo}–{hi}")
+                    cur[k] = v
             for old in ("idle_minutes", "keep_on"):   # settings from the idle-off version
                 cur.pop(old, None)
             self._write(d)

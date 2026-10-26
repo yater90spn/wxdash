@@ -197,14 +197,26 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
       <section class="panel" id="displayPanel">
         <h2>Display</h2>
-        <p class="help">The screen turns itself on and off at set times each day. Tapping can't wake the Corsair from standby, so use these buttons to turn it on outside those hours. It stays that way until the next scheduled change.</p>
+        <p class="help">During the day the screen dims when nobody's touching it, and a tap brings it back. Overnight it turns fully off. A tap can't wake it from off, so use these buttons; a manual change lasts until the next scheduled one.</p>
         <div class="row" style="align-items:center">
           <span id="dispState" style="flex:none"></span>
           <span></span>
           <button class="btn ghost small shrink" type="button" id="dispOn">Turn on</button>
           <button class="btn ghost small shrink" type="button" id="dispOff">Turn off</button>
         </div>
-        <label class="check"><input type="checkbox" id="schedOn"> Only on between</label>
+        <div class="field" id="dimFields"><label for="dimAfter">Dim after</label>
+          <select id="dimAfter">
+            <option value="0">Never</option><option value="1">1 minute</option><option value="2">2 minutes</option>
+            <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option>
+            <option value="30">30 minutes</option><option value="60">1 hour</option>
+          </select>
+          <div style="margin-top:12px"><span class="lbl">Normal brightness <b id="brightOut"></b></span>
+            <input type="range" min="10" max="100" step="5" id="bright" aria-label="Normal brightness"></div>
+          <div style="margin-top:8px"><span class="lbl">Dimmed brightness <b id="dimOut"></b></span>
+            <input type="range" min="0" max="50" step="5" id="dim" aria-label="Dimmed brightness">
+            <div class="hint">Moving this shows the dim level for 3 seconds.</div></div>
+        </div>
+        <label class="check"><input type="checkbox" id="schedOn"> Turn fully off overnight; on between</label>
         <div class="row" style="margin-top:8px"><input type="time" id="on1" value="06:00" aria-label="On at">
           <span class="shrink" style="color:var(--ink3)">and</span><input type="time" id="on2" value="23:00" aria-label="Off at"></div>
         <div class="error" id="dispErr"></div>
@@ -479,6 +491,10 @@ function renderDisplay() {
   $("#schedOn").checked = !!d.on_hours;
   if (d.on_hours) { const [a, b] = d.on_hours.split("-"); $("#on1").value = a.padStart(5, "0"); $("#on2").value = b === "24:00" ? "23:59" : b.padStart(5, "0"); }
   $("#on1").disabled = $("#on2").disabled = !d.on_hours;
+  $("#dimFields").hidden = !pw.dim_available && !P.demo;
+  $("#dimAfter").value = String(d.dim_after ?? 0);
+  $("#bright").value = d.bright ?? 95; $("#brightOut").textContent = `${d.bright ?? 95}%`;
+  $("#dim").value = d.dim ?? 0; $("#dimOut").textContent = `${d.dim ?? 0}%`;
   $("#dispErr").textContent = pw.error ? pw.error :
     (!pw.available && !P.demo ? "Screen control isn't installed on the Pi yet; it's added automatically with the next update." : "");
 }
@@ -494,6 +510,15 @@ function setupDisplay() {
     catch (e) { $("#dispErr").textContent = e.message; }
   };
   $("#dispOn").onclick = () => power(true); $("#dispOff").onclick = () => power(false);
+  $("#dimAfter").onchange = () => save({dim_after: +$("#dimAfter").value});
+  $("#bright").oninput = () => $("#brightOut").textContent = `${$("#bright").value}%`;
+  $("#dim").oninput = () => $("#dimOut").textContent = `${$("#dim").value}%`;
+  $("#bright").onchange = async () => { await save({bright: +$("#bright").value});
+    api("POST", "/api/display/brightness", {level: "bright"}).catch(e => $("#dispErr").textContent = e.message); };
+  $("#dim").onchange = async () => { await save({dim: +$("#dim").value});
+    try { await api("POST", "/api/display/brightness", {level: "dim"});
+          setTimeout(() => api("POST", "/api/display/brightness", {level: "bright"}).catch(() => {}), 3000); }
+    catch (e) { $("#dispErr").textContent = e.message; } };
 }
 
 async function load() {

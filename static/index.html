@@ -395,9 +395,36 @@ function render(d) {
 }
 
 // ---------- screen power ----------
-// The Corsair stops sending touches while it's in standby, so a tap can't wake it.
-// The server turns the screen on/off on a daily schedule; this button turns it off
-// until the next scheduled on-time (or until "Turn on" in the planner).
+// Overnight the server turns the screen off on a schedule (a tap can't wake the
+// Corsair from standby). During the day the page dims the backlight over HDMI after
+// a few idle minutes; the monitor stays awake, so the first tap restores it (and is
+// swallowed so it doesn't also select a card).
+let DIMMED = false, LAST_INPUT = Date.now(), SWALLOW_UNTIL = 0;
+async function brightness(level) {
+  try {
+    const r = await fetch("/api/display/brightness", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                      body: JSON.stringify({level})});
+    return r.ok;
+  } catch (e) { console.error(e); return false; }
+}
+document.addEventListener("pointerdown", e => {
+  LAST_INPUT = Date.now();
+  if (DIMMED || Date.now() < SWALLOW_UNTIL) {
+    e.stopPropagation(); e.preventDefault();
+    if (DIMMED) { DIMMED = false; SWALLOW_UNTIL = Date.now() + 800; brightness("bright"); }
+  }
+}, true);
+document.addEventListener("click", e => { if (Date.now() < SWALLOW_UNTIL) { e.stopPropagation(); e.preventDefault(); } }, true);
+setInterval(async () => {
+  const cfg = DATA && DATA.display; if (!cfg || !cfg.power || !cfg.power.dim_available) return;
+  if (!DIMMED && cfg.dim_after > 0 && Date.now() - LAST_INPUT > cfg.dim_after * 60000) {
+    if (await brightness("dim")) DIMMED = true;
+  }
+}, 10000);
+function syncDim(serverDimmed) {   // brightness changed elsewhere (planner, schedule)
+  if (DIMMED && !serverDimmed) LAST_INPUT = Date.now();
+  DIMMED = serverDimmed;
+}
 async function screenOff() {
   try {
     await fetch("/api/display/power", {method: "POST", headers: {"Content-Type": "application/json"},
@@ -439,6 +466,7 @@ setInterval(async () => {
     if (BOOT_VERSION === null) { BOOT_VERSION = j.version; PLANS_REV = j.plans_rev; }
     else if (j.version !== BOOT_VERSION) location.reload();
     else if (j.plans_rev !== PLANS_REV) { PLANS_REV = j.plans_rev; load(); }  // a plan was saved
+    if (j.dimmed !== undefined) syncDim(j.dimmed);
   } catch (e) { /* server restarting — try again next tick */ }
 }, 20000);
 </script>

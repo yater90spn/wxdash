@@ -24,6 +24,19 @@ if ! command -v wlopm >/dev/null 2>&1; then
   apt-get install -y -qq wlopm >/dev/null 2>&1 || echo "note: couldn't install wlopm; screen on/off won't work"
 fi
 
+# 1c. Monitor brightness over HDMI (DDC/CI): ddcutil + i2c access for the service user
+if ! command -v ddcutil >/dev/null 2>&1; then
+  apt-get install -y -qq ddcutil >/dev/null 2>&1 || echo "note: couldn't install ddcutil; idle dimming won't work"
+fi
+echo i2c-dev > /etc/modules-load.d/wxdash-i2c.conf
+modprobe i2c-dev 2>/dev/null || true
+getent group i2c >/dev/null || groupadd -f i2c
+id -nG "$OWNER" | grep -qw i2c || usermod -aG i2c "$OWNER"
+if [ ! -f /etc/udev/rules.d/60-wxdash-i2c.rules ]; then
+  echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' > /etc/udev/rules.d/60-wxdash-i2c.rules
+  udevadm control --reload-rules 2>/dev/null; udevadm trigger --subsystem-match=i2c-dev 2>/dev/null || true
+fi
+
 # 2. Server service (listens on the network so you can open http://<host>:8080 elsewhere)
 cat > /etc/systemd/system/wxdash.service <<EOF
 [Unit]

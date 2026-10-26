@@ -53,8 +53,13 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
 - Instead a server thread (`display.run_schedule`) applies `display.on_hours` (default
   06:00-23:00, None = always on) at the boundaries only, so manual Turn on/off from the
   planner holds until the next boundary. Dashboard has a "⏻ Screen off" button.
-- Pending: `deploy/dim-test.sh` checks whether brightness can be set over DDC/CI. If yes,
-  idle-dim (monitor stays awake, touch keeps working) is the better daytime option.
+- **Daytime idle-dim via DDC/CI works** (dim-test.sh 2026-10-25: Xeneon Edge on /dev/i2c-20,
+  VCP 0x10 brightness 0–100, was 95). `display.set_brightness` runs
+  `ddcutil --bus N --noverify setvcp 10 V` (bus auto-detected). install.sh installs ddcutil,
+  loads i2c-dev, adds the service user to `i2c` + a udev rule so it runs without root.
+- Page dims after `display.dim_after` idle minutes to `display.dim` and restores
+  `display.bright` on the first tap (swallowed). Turn on / scheduled on also restore `bright`.
+  Planner Display section: dim after, brightness sliders (dim slider previews for 3 s).
 
 ## Hardware / OS
 - Raspberry Pi 4B, Raspberry Pi OS **Trixie** (Wayland, **labwc**).
