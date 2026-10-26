@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2330"/><stop offset="1" stop-color="#0b0f14"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- score ring -->
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#243040" stroke-width="30"/>
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#38b2ac" stroke-width="30" stroke-linecap="round"
+          stroke-dasharray="839 1119" transform="rotate(-90 256 256)"/>
+  <!-- sun -->
+  <g fill="#f2c14e">
+    <circle cx="214" cy="216" r="58"/>
+    <g stroke="#f2c14e" stroke-width="16" stroke-linecap="round">
+      <line x1="214" y1="128" x2="214" y2="106"/><line x1="214" y1="128" x2="214" y2="106" transform="rotate(45 214 216)"/>
+      <line x1="214" y1="128" x2="214" y2="106" transform="rotate(-45 214 216)"/><line x1="214" y1="128" x2="214" y2="106" transform="rotate(-90 214 216)"/>
+      <line x1="214" y1="128" x2="214" y2="106" transform="rotate(-135 214 216)"/>
+    </g>
+  </g>
+  <!-- cloud -->
+  <path d="M180 352h150a50 50 0 0 0 4-99.8A72 72 0 0 0 198 238a52 52 0 0 0-18 114z" fill="#e8eef5"/>
+</svg>

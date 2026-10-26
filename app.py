@@ -82,6 +82,25 @@ def create_app(config_path, demo=False, data_path=None):
     def planner_page():
         return send_from_directory(os.path.join(HERE, "static"), "plan.html")
 
+    # ---------- app icon / home-screen shortcut ----------
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return send_from_directory(os.path.join(HERE, "static"), "manifest.webmanifest",
+                                   mimetype="application/manifest+json")
+
+    @app.get("/icons/<path:name>")
+    def icons(name):
+        return send_from_directory(os.path.join(HERE, "static", "icons"), name, max_age=86400)
+
+    @app.get("/apple-touch-icon.png")
+    @app.get("/apple-touch-icon-precomposed.png")
+    def apple_icon():
+        return send_from_directory(os.path.join(HERE, "static", "icons"), "apple-touch-icon.png")
+
+    @app.get("/favicon.ico")
+    def favicon():
+        return send_from_directory(os.path.join(HERE, "static", "icons"), "favicon-32.png", mimetype="image/png")
+
     # ---------- dashboard ----------
     @app.get("/api/version")
     def version():
