@@ -68,17 +68,21 @@ Window score = 70% average + 30% worst hour, so one bad hour drags it down.
 Add a new activity by subclassing `Activity` (`score_hour` + `summarize`) and
 registering it in `activities/__init__.py`.
 
-## Schedule
+## Planning activities
 
-```yaml
-- activity: running
-  days: [mon, tue, wed, thu, fri]
-  flex: {between: "06:00-19:00", duration: 1}   # picks the best hour
-- activity: spectator
-  label: Tournament
-  date: 2026-10-24                               # one-off
-  time: "09:00-15:00"
-```
+Open **`http://weatherdash.local:8080/plan`** from any computer or phone on your network.
+
+- **Add a plan:** pick the activity, place, a date (or weekdays) and a time range. Tick
+  "I'm flexible" to have it pick the best N hours in that range. The rating shows
+  while you fill in the form, and the dashboard updates within ~20 seconds of saving.
+- **Watch for good conditions:** turn on surf, sailing, running or yard work, set the
+  hours, days and the minimum score. Days that clear the bar show up as "Suggested"
+  cards. If nothing qualifies, the planner shows the best window and its score.
+- **Places:** "+ New place" searches by name. For a surf spot, set which way the
+  beach faces so wind and swell can be judged.
+
+Plans are saved in `data/plans.json` on the Pi (not in git, so updates never touch them).
+`config.yaml` still holds built-in places, model settings and scoring rules.
 
 ## Raspberry Pi setup (Pi OS Bookworm/Trixie, labwc desktop)
 

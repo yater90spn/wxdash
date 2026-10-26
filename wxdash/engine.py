@@ -47,8 +47,9 @@ def fmt_span(a, b):
 
 
 class Engine:
-    def __init__(self, cfg, demo=False):
+    def __init__(self, cfg, demo=False, store=None):
         self.cfg = cfg
+        self.store = store
         self.tz = ZoneInfo(cfg.get("timezone", "America/New_York"))
         self.demo = demo
         self.session = requests.Session()
@@ -59,10 +60,19 @@ class Engine:
         self._fetched = {}
 
     # ---------- data ----------
+    def locations(self, data=None):
+        """config.yaml locations plus places added from the planner."""
+        places = dict(self.cfg.get("locations", {}))
+        if self.store:
+            data = data or self.store.load()
+            for k, v in data.get("places", {}).items():
+                places.setdefault(k, v)
+        return places
+
     def _place(self, key):
-        places = self.cfg["locations"]
+        places = self.locations()
         if key not in places:
-            raise KeyError(f"Unknown location '{key}' — add it under locations:")
+            raise KeyError(f"Unknown location '{key}'")
         return places[key]
 
     def _fetch(self, key, need_marine):
@@ -118,24 +128,21 @@ class Engine:
                 raise
 
     # ---------- schedule ----------
-    def _instances(self, now):
-        look = self.cfg.get("lookahead_days", 3)
-        for entry in self.cfg.get("schedule", []):
-            if entry.get("enabled") is False:
-                continue
-            dates = []
-            if "date" in entry:
-                d = entry["date"]
-                d = d if not isinstance(d, str) else datetime.strptime(d, "%Y-%m-%d").date()
-                dates = [d]
-            else:
-                days = [x.lower()[:3] for x in entry.get("days", DAYS)]
-                for i in range(look):
-                    d = (now + timedelta(days=i)).date()
-                    if DAYS[d.weekday()] in days:
-                        dates.append(d)
-            for d in dates:
-                yield entry, d
+    def _dates(self, entry, now, look=None):
+        look = look or self.cfg.get("lookahead_days", 7)
+        if entry.get("enabled") is False:
+            return []
+        if entry.get("date"):
+            d = entry["date"]
+            d = d if not isinstance(d, str) else datetime.strptime(d, "%Y-%m-%d").date()
+            return [d]
+        days = [x.lower()[:3] for x in entry.get("days", DAYS)]
+        out = []
+        for i in range(look):
+            d = (now + timedelta(days=i)).date()
+            if DAYS[d.weekday()] in days:
+                out.append(d)
+        return out
 
     def _ctx(self, hours, now, extras):
         index_of = {h["time"]: i for i, h in enumerate(hours)}
@@ -151,65 +158,140 @@ class Engine:
         return {"now": now, "all_hours": hours, "index_of": index_of,
                 "rain_before": rain_before, "rain_after": rain_after, **extras}
 
-    def build_cards(self, now):
-        cards = []
-        cur_hour = now.replace(minute=0, second=0, microsecond=0)
-        for entry, d in self._instances(now):
-            kind = entry["activity"]
-            cls = REGISTRY.get(kind)
-            if not cls:
-                self.errors.append(f"unknown activity '{kind}'")
-                continue
-            loc = entry.get("location", "home")
+    def card_for(self, entry, d, now):
+        """Score one occurrence of an entry. Returns (card, None) or (None, reason)."""
+        kind = entry["activity"]
+        cls = REGISTRY.get(kind)
+        if not cls:
+            return None, f"unknown activity '{kind}'"
+        loc = entry.get("location", "home")
+        try:
             place = {**self._place(loc), **entry.get("spot", {})}
-            rules = {**self.cfg.get("rules", {}).get(kind, {}), **entry.get("rules", {})}
-            act = cls(rules=rules, place=place)
-            try:
-                hours, sun, extras = self.data_for(loc, act.needs_marine)
-            except Exception:
-                continue
-            ctx = self._ctx(hours, now, extras)
+        except KeyError as e:
+            return None, str(e)
+        rules = {**self.cfg.get("rules", {}).get(kind, {}), **entry.get("rules", {})}
+        act = cls(rules=rules, place=place)
+        try:
+            hours, sun, extras = self.data_for(loc, act.needs_marine)
+        except Exception as e:
+            return None, f"forecast unavailable ({e})"
+        ctx = self._ctx(hours, now, extras)
+        cur_hour = now.replace(minute=0, second=0, microsecond=0)
 
-            flex = entry.get("flex")
-            span = entry.get("time") if not flex else flex["between"]
-            (h1, m1), (h2, m2) = _span(span)
-            w_start = datetime(d.year, d.month, d.day, h1, m1, tzinfo=self.tz)
+        flex = entry.get("flex")
+        span = entry.get("time") if not flex else flex["between"]
+        (h1, m1), (h2, m2) = _span(span)
+        w_start = datetime(d.year, d.month, d.day, h1, m1, tzinfo=self.tz)
+        if (h2, m2) == (24, 0):
+            w_end = datetime(d.year, d.month, d.day, tzinfo=self.tz) + timedelta(days=1)
+        else:
             w_end = datetime(d.year, d.month, d.day, h2, m2, tzinfo=self.tz)
-            if w_end <= now:
-                continue
-            # hours whose start lies inside the window
-            sl = [h for h in hours if w_start <= h["time"] < w_end and h["time"] >= cur_hour]
+        if w_end <= now:
+            return None, "that time has already passed"
+        sl = [h for h in hours if w_start <= h["time"] < w_end and h["time"] >= cur_hour]
+        if entry.get("daylight"):
+            # first light (~30 min before sunrise) to sunset
+            sun_d = next(((a, b) for a, b in sun if a.date() == d), None)
+            if sun_d:
+                dawn, dusk = sun_d[0] - timedelta(minutes=30), sun_d[1]
+                sl = [h for h in sl if h["time"] + timedelta(minutes=30) >= dawn
+                      and h["time"] + timedelta(minutes=30) <= dusk]
             if not sl:
-                continue
-            if flex:
-                n = max(1, int(flex.get("duration", 1)))
-                per = [act.score_hour(h, ctx)[0] for h in sl]
-                best, best_i = -99, 0
-                for i in range(0, max(1, len(sl) - n + 1)):
-                    seg = per[i:i + n]
-                    val = 0.7 * mean(seg) + 0.3 * min(seg)
-                    if val > best:
-                        best, best_i = val, i
-                sl = sl[best_i:best_i + n]
-            card = act.evaluate(sl, ctx)
-            start, end = sl[0]["time"], sl[-1]["time"] + timedelta(hours=1)
-            day = "Today" if d == now.date() else ("Tomorrow" if d == (now + timedelta(days=1)).date()
-                                                   else d.strftime("%A"))
-            label = entry.get("label", act.label)
-            card.update({
-                "id": f"{entry.get('id', kind)}-{d.isoformat()}",
-                "title": label,
-                "day": day,
-                "when": fmt_span(start, end) + (" · best window" if flex else ""),
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-                "location": place.get("name", loc),
-                "live": start <= now < end,
-                "flex": bool(flex),
-            })
-            cards.append(card)
+                return None, "no daylight hours in that window"
+        if not sl:
+            last = hours[-1]["time"] if hours else now
+            if w_start > last:
+                return None, f"beyond the forecast (goes to {last.strftime('%a %b %-d')})"
+            return None, "no forecast hours in that window"
+        if flex:
+            n = max(1, int(flex.get("duration", 1)))
+            per = [act.score_hour(h, ctx)[0] for h in sl]
+            best, best_i = -99, 0
+            for i in range(0, max(1, len(sl) - n + 1)):
+                seg = per[i:i + n]
+                val = 0.7 * mean(seg) + 0.3 * min(seg)
+                if val > best:
+                    best, best_i = val, i
+            sl = sl[best_i:best_i + n]
+        card = act.evaluate(sl, ctx)
+        start, end = sl[0]["time"], sl[-1]["time"] + timedelta(hours=1)
+        day = "Today" if d == now.date() else ("Tomorrow" if d == (now + timedelta(days=1)).date()
+                                               else d.strftime("%A"))
+        card.update({
+            "id": f"{entry.get('id', kind)}-{d.isoformat()}",
+            "plan_id": entry.get("id"),
+            "title": entry.get("label") or act.label,
+            "day": day,
+            "date": d.isoformat(),
+            "when": fmt_span(start, end) + (" · best window" if flex else ""),
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "location": place.get("name", loc),
+            "live": start <= now < end,
+            "flex": bool(flex),
+            "suggested": False,
+        })
+        return card, None
+
+    def _entries(self, data):
+        entries = [dict(e, source="config") for e in self.cfg.get("schedule") or []]
+        if data:
+            entries += [dict(p, source="plan") for p in data.get("plans", [])]
+        return entries
+
+    def build_cards(self, now, data=None):
+        cards = []
+        for entry in self._entries(data):
+            for d in self._dates(entry, now):
+                card, why = self.card_for(entry, d, now)
+                if card:
+                    cards.append(card)
+                elif why and why.startswith("unknown"):
+                    self.errors.append(why)
         cards.sort(key=lambda c: c["start"])
         return cards
+
+    def watch_scan(self, now, data, planned):
+        """Best window per day for each enabled watch.
+
+        Returns (suggestion cards, status per watch). A day becomes a suggestion
+        when its best window scores at least min_score and you don't already
+        have that activity planned that day.
+        """
+        from .activities import REGISTRY as R
+        sugg, status = [], {}
+        taken = {(c["kind"], c["date"]) for c in planned}
+        for kind, w in (data or {}).get("watches", {}).items():
+            if not w.get("enabled") or kind not in R:
+                continue
+            entry = {"id": f"watch-{kind}", "activity": kind, "location": w["location"],
+                     "flex": {"between": w["between"], "duration": w["duration"]},
+                     "days": w.get("days", DAYS),
+                     "daylight": kind in ("surf", "sailing", "yardwork")}
+            days = []
+            for d in self._dates(entry, now):
+                card, _ = self.card_for(entry, d, now)
+                if card:
+                    days.append(card)
+            good = [c for c in days if c["score"] >= w["min_score"] and (kind, c["date"]) not in taken]
+            good = sorted(good, key=lambda c: -c["score"])[: int(self.cfg.get("max_suggestions", 3))]
+            for c in good:
+                c["suggested"] = True
+                c["title"] = R[kind].label
+                c["when"] = c["when"].replace(" · best window", "")
+            sugg += good
+            best = max(days, key=lambda c: c["score"], default=None)
+            status[kind] = {
+                "suggested": len(good),
+                "best": None if not best else {
+                    "day": best["day"], "when": best["when"].replace(" · best window", ""),
+                    "score": best["score"], "verdict": best["verdict"],
+                    "detail": " · ".join(best["lines"][:3]), "advice": best["advice"],
+                    "advice_label": best["advice_label"],
+                },
+                "days_checked": len(days),
+            }
+        return sugg, status
 
     # ---------- dashboard ----------
     def dashboard(self, now=None):
@@ -261,7 +343,10 @@ class Engine:
             "lo": min((h["temperature_2m"] for h in hours if h["time"].date() == now.date()
                        and h.get("temperature_2m") is not None), default=None),
         }
-        cards = self.build_cards(now)
+        data = self.store.load() if self.store else None
+        cards = self.build_cards(now, data)
+        sugg, _ = self.watch_scan(now, data, cards)
+        cards = sorted(cards + sugg, key=lambda c: c["start"])
         oldest = min(self._fetched.values()) if self._fetched else time.time()
         return {
             "data_age_min": round((time.time() - oldest) / 60),

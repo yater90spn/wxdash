@@ -42,6 +42,9 @@ body.dim{filter:brightness(.55)}
   padding:16px 20px 14px;display:flex;flex-direction:column;border:2px solid transparent;
   transition:border-color .15s, background .15s}
 .card.sel{border-color:var(--hl);background:var(--panel2)}
+.card.sugg{border:2px dashed #2f4a3a;background:#101a16}
+.card.sugg.sel{border-color:var(--s3)}
+.card .tag{color:var(--s3);font-weight:600}
 .card .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .card .day{font-size:15px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink2);white-space:nowrap}
 .card .live{color:var(--s4);font-weight:600}
@@ -154,10 +157,10 @@ function staleNote(d) {
 
 function renderCards(d) {
   const el = document.getElementById("cards");
-  if (!d.cards.length) { el.innerHTML = `<div class="empty">No scheduled activities in the next few days — add some in config.yaml.</div>`; return; }
+  if (!d.cards.length) { el.innerHTML = `<div class="empty">Nothing planned in the next week. Add plans or turn on suggestions at ${esc(d.planner_url || location.host + '/plan')}</div>`; return; }
   el.innerHTML = d.cards.map(c => `
-    <article class="card ${SELECTED === c.id ? "sel" : ""}" data-id="${esc(c.id)}">
-      <div class="top"><span class="day">${c.live ? '<span class="live">● Now</span>' : esc(c.day)}</span><span class="where">${esc(c.location)}</span></div>
+    <article class="card ${c.suggested ? "sugg" : ""} ${SELECTED === c.id ? "sel" : ""}" data-id="${esc(c.id)}">
+      <div class="top"><span class="day">${c.live ? '<span class="live">● Now</span>' : esc(c.day)}${c.suggested ? ' · <span class="tag">Suggested</span>' : ""}</span><span class="where">${esc(c.location)}</span></div>
       <h2>${esc(c.title)}</h2>
       <div class="when">${esc(c.when)}</div>
       <div class="score-row">${ring(c.score)}
@@ -269,14 +272,15 @@ load();
 
 // When an update is deployed the server restarts with a new version;
 // reload the page so the kiosk picks up new layout/code without a reboot.
-let BOOT_VERSION = null;
+let BOOT_VERSION = null, PLANS_REV = null;
 setInterval(async () => {
   try {
-    const v = (await (await fetch("/api/version", {cache: "no-store"})).json()).version;
-    if (BOOT_VERSION === null) BOOT_VERSION = v;
-    else if (v !== BOOT_VERSION) location.reload();
+    const j = await (await fetch("/api/version", {cache: "no-store"})).json();
+    if (BOOT_VERSION === null) { BOOT_VERSION = j.version; PLANS_REV = j.plans_rev; }
+    else if (j.version !== BOOT_VERSION) location.reload();
+    else if (j.plans_rev !== PLANS_REV) { PLANS_REV = j.plans_rev; load(); }  // a plan was saved
   } catch (e) { /* server restarting — try again next tick */ }
-}, 60000);
+}, 20000);
 </script>
 </body>
 </html>

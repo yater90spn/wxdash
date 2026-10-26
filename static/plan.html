@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Planner</title>
+<style>
+:root{
+  --bg:#0b0f14; --panel:#121820; --panel2:#171f29; --line:#243040; --field:#0e141b;
+  --ink:#e8eef5; --ink2:#9aabbd; --ink3:#5f7184; --accent:#4a9eea; --danger:#e5534b;
+  --s0:#e5534b; --s1:#e8913a; --s2:#d8c13f; --s3:#5fbf6a; --s4:#38b2ac;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 "Inter","Segoe UI","DejaVu Sans",system-ui,sans-serif;padding:24px 16px 80px}
+a{color:var(--accent);text-decoration:none}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1240px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:30px;font-weight:600;letter-spacing:-.01em}
+header .sub{color:var(--ink2)}
+header .right{margin-left:auto}
+h2{font-size:20px;font-weight:600;margin-bottom:4px}
+.help{color:var(--ink3);font-size:14px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border-radius:16px;padding:20px}
+.stack>*+*{margin-top:20px}
+
+/* form */
+.field{margin-top:14px}
+.field>label:not(.check),.lbl{display:block;font-size:13px;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+input[type=text],input[type=date],input[type=time],input[type=search],select{
+  background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
+input[type=time],input[type=date]{color-scheme:dark}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1;min-width:0}
+.row .shrink{flex:none}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button,.chip{background:var(--field);border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer;min-height:40px}
+.seg button.on,.chip.on{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+.chip{padding:6px 12px;min-height:36px;font-size:14px}
+.hint{font-size:13px;color:var(--ink3);margin-top:6px}
+.check{display:flex;gap:10px;align-items:center;cursor:pointer;margin-top:12px;color:var(--ink2)}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.btn{background:var(--accent);color:#06121f;border:0;border-radius:10px;padding:11px 20px;font-weight:600;cursor:pointer;min-height:44px}
+.btn.ghost{background:transparent;color:var(--ink2);border:1px solid var(--line)}
+.btn.small{padding:6px 12px;min-height:34px;font-size:14px}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid #5a2a2a}
+.btn:disabled{opacity:.5;cursor:default}
+.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.error{color:var(--danger);font-size:14px;margin-top:10px;min-height:1em}
+
+/* place search */
+.placebox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:10px}
+.results{list-style:none;margin-top:8px;max-height:220px;overflow:auto}
+.results li{padding:9px 10px;border-radius:8px;cursor:pointer}
+.results li:hover,.results li.on{background:var(--field)}
+.results small{color:var(--ink3)}
+
+/* rating preview + mini cards */
+.preview{margin-top:20px;border-top:1px solid var(--line);padding-top:16px}
+.mini{display:grid;grid-template-columns:56px 1fr;gap:4px 14px;background:var(--bg);border-radius:12px;padding:12px 14px;margin-top:10px}
+.mini .ring{grid-row:span 3}
+.mini .t{font-weight:600}
+.mini .t span{color:var(--ink2);font-weight:400}
+.mini .lines{color:var(--ink2);font-size:14px}
+.mini .adv{font-size:14px}
+.mini .adv b{color:var(--ink2);font-weight:600}
+.note{color:var(--ink3);font-size:14px;margin-top:8px}
+
+/* plans */
+.plan{border-top:1px solid var(--line);padding:14px 0}
+.plan:first-of-type{border-top:0;padding-top:4px}
+.plan .head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.plan .name{font-weight:600;font-size:18px}
+.plan .meta{color:var(--ink2);font-size:14px}
+.plan .head .btns{margin-left:auto;display:flex;gap:8px}
+.occ{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.pill{display:inline-flex;align-items:center;gap:8px;background:var(--bg);border-radius:999px;padding:4px 12px 4px 4px;font-size:14px}
+.pill .sc{display:inline-grid;place-items:center;min-width:34px;height:26px;border-radius:999px;font-weight:700;color:#06121f;font-size:13px;padding:0 6px}
+.empty{color:var(--ink3);padding:8px 0}
+
+/* watches */
+.watch{border-top:1px solid var(--line);padding:16px 0}
+.watch:first-of-type{border-top:0;padding-top:4px}
+.watch .top{display:flex;align-items:center;gap:12px}
+.watch .top .name{font-weight:600;font-size:18px;flex:1}
+.switch{position:relative;width:52px;height:30px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:var(--line);border-radius:999px;cursor:pointer;transition:.15s}
+.switch span::before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;background:var(--ink);border-radius:50%;transition:.15s}
+.switch input:checked+span{background:var(--s3)}
+.switch input:checked+span::before{transform:translateX(22px)}
+.watch .body{margin-top:10px}
+.watch.off .body{display:none}
+.status{font-size:14px;margin-top:10px;background:var(--bg);border-radius:10px;padding:10px 12px;color:var(--ink2)}
+.status b{color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.places-list{list-style:none}
+.places-list li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.places-list li:first-child{border-top:0}
+.places-list li span{flex:1}
+@media (max-width:560px){.watch .row select[data-f=duration]{flex-basis:100%;max-width:none!important}
+  input[type=time]{min-width:118px}}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 18px;border-radius:999px;opacity:0;transition:.2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Planner</h1>
+    <span class="sub">Tell it what you're doing and when; it rates the weather.</span>
+    <a class="right" href="/">Dashboard →</a>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: add/edit -->
+    <section class="panel" id="formPanel">
+      <h2 id="formTitle">Add a plan</h2>
+      <p class="help">The rating updates as you fill this in. Saved plans show on the dashboard.</p>
+
+      <div class="field"><span class="lbl">Activity</span><div class="seg" id="actSeg"></div>
+        <div class="hint" id="actHint"></div></div>
+
+      <div class="field" id="taskField" hidden><label for="task">Task</label>
+        <select id="task"></select></div>
+
+      <div class="field"><label for="label">Name <span style="text-transform:none;letter-spacing:0;color:var(--ink3)">(optional)</span></label>
+        <input type="text" id="label" maxlength="60" placeholder="e.g. Baseball game"></div>
+
+      <div class="field"><label for="loc">Where</label>
+        <div class="row"><select id="loc"></select>
+          <button class="btn ghost shrink" type="button" id="addPlaceBtn">+ New place</button></div>
+        <div class="hint" id="locHint"></div>
+        <div class="placebox" id="placeBox" hidden>
+          <label class="lbl" for="placeQ">Search for a town, park or beach</label>
+          <input type="search" id="placeQ" placeholder="e.g. Holmdel, Manasquan Inlet" autocomplete="off">
+          <ul class="results" id="placeResults"></ul>
+          <div id="placeExtra" hidden>
+            <div class="field"><label for="placeName">Call it</label><input type="text" id="placeName" maxlength="60"></div>
+            <div class="field" id="facingField"><label for="facing">Beach faces <span style="text-transform:none;letter-spacing:0;color:var(--ink3)">(only needed for surf spots)</span></label>
+              <select id="facing"><option value="">Not a surf spot</option></select>
+              <div class="hint">The direction you look when standing on the sand facing the water.</div></div>
+            <div class="actions"><button class="btn" type="button" id="savePlace">Add place</button>
+              <button class="btn ghost" type="button" id="cancelPlace">Cancel</button></div>
+          </div>
+          <div class="error" id="placeErr"></div>
+        </div>
+      </div>
+
+      <div class="field"><span class="lbl">When</span>
+        <div class="seg" id="whenSeg"><button type="button" data-v="once" class="on">One day</button><button type="button" data-v="repeat">Repeats weekly</button></div>
+        <div style="margin-top:10px" id="dateWrap"><input type="date" id="date" aria-label="Date"></div>
+        <div style="margin-top:10px" class="seg" id="daysWrap" hidden></div>
+      </div>
+
+      <div class="field"><span class="lbl">Time</span>
+        <div class="row"><input type="time" id="t1" value="10:00" aria-label="From"><span class="shrink" style="color:var(--ink3)">to</span><input type="time" id="t2" value="13:00" aria-label="To"></div>
+        <label class="check"><input type="checkbox" id="flex"> I'm flexible: find the best
+          <select id="dur" style="width:auto;min-height:36px;padding:4px 8px"></select> in this range</label>
+      </div>
+
+      <div class="preview" id="preview"><span class="lbl">Rating</span><div id="previewBody" class="note">Pick an activity to see the rating.</div></div>
+
+      <div class="error" id="formErr"></div>
+      <div class="actions">
+        <button class="btn" type="button" id="saveBtn">Save plan</button>
+        <button class="btn ghost" type="button" id="cancelBtn" hidden>Cancel edit</button>
+      </div>
+    </section>
+
+    <!-- RIGHT: plans, watches, places -->
+    <div class="stack">
+      <section class="panel">
+        <h2>Your plans</h2>
+        <p class="help">Next few dates with their ratings. Repeating plans show the next three.</p>
+        <div id="plans"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Watch for good conditions</h2>
+        <p class="help">Turn one on and the dashboard adds a "Suggested" card on days that score at or above your bar, unless you already have that activity planned that day.</p>
+        <div id="watches"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Places</h2>
+        <p class="help">Places you've added. Built-in places come from the config file.</p>
+        <ul class="places-list" id="places"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
+const DAYN = {mon:"Mon",tue:"Tue",wed:"Wed",thu:"Thu",fri:"Fri",sat:"Sat",sun:"Sun"};
+const COMPASS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const scoreColor = s => s < 3 ? "var(--s0)" : s < 5 ? "var(--s1)" : s < 6.5 ? "var(--s2)" : s < 8.5 ? "var(--s3)" : "var(--s4)";
+let P = null;                 // planner payload
+let form = {activity:"spectator", when:"once", days:["sat"], editing:null};
+let placeSel = null;
+
+async function api(method, url, data) {
+  const r = await fetch(url, {method, headers: {"Content-Type": "application/json"},
+                              body: data ? JSON.stringify(data) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200); }
+const actLabel = k => (P.activities.find(a => a.kind === k) || {}).label || k;
+const locName = k => (P.locations.find(l => l.key === k) || {}).name || k;
+const fmtT = t => { let [h, m] = t.split(":").map(Number); const ap = h >= 12 && h < 24 ? "PM" : "AM"; h = h % 12 || 12; return m ? `${h}:${String(m).padStart(2,"0")} ${ap}` : `${h} ${ap}`; };
+const fmtSpan = s => s.split("-").map(fmtT).join("–");
+const fmtDate = d => new Date(d + "T12:00").toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+
+function ring(score, size = 56) {
+  const r = size / 2 - 5, C = 2 * Math.PI * r, f = Math.max(0, Math.min(10, score)) / 10;
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="6"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${scoreColor(score)}" stroke-width="6" stroke-linecap="round"
+      stroke-dasharray="${C*f} ${C}" transform="rotate(-90 ${size/2} ${size/2})"/>
+    <text x="${size/2}" y="${size/2+6}" text-anchor="middle" fill="var(--ink)" font-size="16" font-weight="600">${score.toFixed(1)}</text></svg>`;
+}
+const mini = c => `<div class="mini">${ring(c.score)}
+  <div class="t">${esc(c.day)}, ${esc(c.when.replace(" · best window", ""))} <span>· ${esc(c.verdict)}</span></div>
+  <div class="lines">${c.lines.slice(0, 4).map(esc).join(" · ")}</div>
+  <div class="adv"><b>${esc(c.advice_label)}:</b> ${esc(c.advice)}</div></div>`;
+const pill = c => `<span class="pill"><span class="sc" style="background:${scoreColor(c.score)}">${c.score.toFixed(1)}</span>${esc(c.day)} ${esc(c.when.replace(" · best window", ""))} · ${esc(c.verdict)}</span>`;
+
+// ---------- form ----------
+function buildForm() {
+  $("#actSeg").innerHTML = P.activities.map(a => `<button type="button" data-k="${a.kind}">${esc(a.label)}</button>`).join("");
+  $("#actSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; form.activity = b.dataset.k; syncForm(); preview(); };
+  $("#daysWrap").innerHTML = DAYS.map(d => `<button type="button" class="chip" data-d="${d}">${DAYN[d]}</button>`).join("");
+  $("#daysWrap").onclick = e => { const b = e.target.closest("button"); if (!b) return;
+    const d = b.dataset.d; form.days = form.days.includes(d) ? form.days.filter(x => x !== d) : [...form.days, d]; syncForm(); preview(); };
+  $("#whenSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; form.when = b.dataset.v; syncForm(); preview(); };
+  $("#dur").innerHTML = [1,2,3,4,5,6].map(n => `<option value="${n}">${n} hour${n > 1 ? "s" : ""}</option>`).join("");
+  $("#facing").innerHTML += COMPASS.map((c, i) => `<option value="${i * 22.5}">${c} (${i * 22.5}°)</option>`).join("");
+  const yard = P.activities.find(a => a.tasks);
+  $("#task").innerHTML = yard.tasks.map(t => `<option>${t}</option>`).join("");
+  const tm = new Date(P.today + "T12:00"); tm.setDate(tm.getDate() + 1);
+  $("#date").value = tm.toISOString().slice(0, 10);
+  for (const id of ["loc","date","t1","t2","flex","dur","task"]) $("#" + id).addEventListener("change", preview);
+}
+function fillLocations() {
+  const cur = $("#loc").value;
+  $("#loc").innerHTML = P.locations.map(l => `<option value="${esc(l.key)}">${esc(l.name)}${l.surf_spot ? " (surf spot)" : ""}</option>`).join("");
+  if (cur && P.locations.some(l => l.key === cur)) $("#loc").value = cur;
+}
+function syncForm() {
+  $("#actSeg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.k === form.activity));
+  const a = P.activities.find(x => x.kind === form.activity);
+  $("#actHint").textContent = a ? a.hint : "";
+  $("#taskField").hidden = form.activity !== "yardwork";
+  $("#whenSeg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === form.when));
+  $("#dateWrap").hidden = form.when !== "once";
+  $("#daysWrap").hidden = form.when !== "repeat";
+  $("#daysWrap").querySelectorAll("button").forEach(b => b.classList.toggle("on", form.days.includes(b.dataset.d)));
+  // Suggest a sensible place for surf/sailing
+  const loc = P.locations.find(l => l.key === $("#loc").value);
+  if (form.activity === "surf" && loc && !loc.surf_spot) {
+    const spot = P.locations.find(l => l.surf_spot); if (spot) $("#loc").value = spot.key;
+  }
+  const l2 = P.locations.find(l => l.key === $("#loc").value);
+  $("#locHint").textContent = form.activity === "surf" && l2 && !l2.surf_spot
+    ? "This place has no beach direction, so wind and swell can't be judged. Add it as a surf spot." : "";
+}
+function readForm() {
+  const p = {activity: form.activity, location: $("#loc").value, label: $("#label").value.trim(),
+             time: `${$("#t1").value}-${$("#t2").value}`};
+  if (form.when === "once") p.date = $("#date").value; else p.days = form.days;
+  if ($("#flex").checked) { p.flex = true; p.duration = +$("#dur").value; }
+  if (form.activity === "yardwork") p.rules = {task: $("#task").value};
+  return p;
+}
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+let previewSeq = 0;
+async function preview() {
+  syncForm();
+  const seq = ++previewSeq;
+  $("#formErr").textContent = "";
+  $("#previewBody").style.opacity = .45;   // keep old content so the layout doesn't jump
+  try {
+    const r = await api("POST", "/api/rate", readForm());
+    if (seq !== previewSeq) return;
+    $("#previewBody").style.opacity = 1;
+    $("#previewBody").innerHTML = (r.upcoming.map(mini).join("") || "") +
+      r.notes.map(n => `<div class="note">${esc(n)}</div>`).join("");
+  } catch (e) {
+    if (seq !== previewSeq) return;
+    $("#previewBody").style.opacity = 1;
+    $("#previewBody").innerHTML = `<div class="note">${esc(e.message)}</div>`;
+  }
+}
+function resetForm() {
+  form.editing = null;
+  $("#formTitle").textContent = "Add a plan"; $("#saveBtn").textContent = "Save plan"; $("#cancelBtn").hidden = true;
+  $("#label").value = ""; $("#flex").checked = false;
+  syncForm(); preview();
+}
+function editPlan(p) {
+  form.editing = p.id; form.activity = p.activity;
+  form.when = p.date ? "once" : "repeat"; form.days = p.days || ["sat"];
+  $("#label").value = p.label || ""; $("#loc").value = p.location;
+  if (p.date) $("#date").value = p.date;
+  const span = p.flex ? p.flex.between : p.time; const [a, b] = span.split("-");
+  $("#t1").value = a; $("#t2").value = b === "24:00" ? "23:59" : b;
+  $("#flex").checked = !!p.flex; if (p.flex) $("#dur").value = p.flex.duration;
+  if (p.rules && p.rules.task) $("#task").value = p.rules.task;
+  $("#formTitle").textContent = "Edit plan"; $("#saveBtn").textContent = "Save changes"; $("#cancelBtn").hidden = false;
+  syncForm(); preview();
+  $("#formPanel").scrollIntoView({behavior: "smooth", block: "start"});
+}
+async function savePlan() {
+  $("#saveBtn").disabled = true;
+  try {
+    const p = readForm();
+    if (form.editing) await api("PUT", `/api/plans/${form.editing}`, p); else await api("POST", "/api/plans", p);
+    toast(form.editing ? "Plan updated" : "Plan saved — it's on the dashboard");
+    resetForm(); await load();
+  } catch (e) { $("#formErr").textContent = e.message; }
+  $("#saveBtn").disabled = false;
+}
+
+// ---------- plans list ----------
+function describe(p) {
+  const span = p.flex ? `best ${p.flex.duration} h between ${fmtSpan(p.flex.between)}` : fmtSpan(p.time);
+  const when = p.date ? fmtDate(p.date) : (p.days.length === 7 ? "Every day" : p.days.map(d => DAYN[d]).join(", "));
+  const task = p.rules && p.rules.task && p.rules.task !== "general" ? ` · ${p.rules.task}` : "";
+  return `${actLabel(p.activity)}${task} · ${locName(p.location)} · ${when}, ${span}`;
+}
+function renderPlans() {
+  const el = $("#plans");
+  const plans = [...P.plans].sort((a, b) => ((a.upcoming[0] || {}).start || "z").localeCompare((b.upcoming[0] || {}).start || "z"));
+  if (!plans.length) { el.innerHTML = `<div class="empty">Nothing planned yet. Add one on the left.</div>`; return; }
+  el.innerHTML = plans.map(p => `<div class="plan">
+    <div class="head"><span class="name">${esc(p.label || actLabel(p.activity))}</span>
+      <span class="btns"><button class="btn ghost small" data-edit="${p.id}">Edit</button>
+      <button class="btn danger small" data-del="${p.id}">Delete</button></span></div>
+    <div class="meta">${esc(describe(p))}</div>
+    <div class="occ">${p.upcoming.map(pill).join("") ||
+      `<span class="note">${esc((p.notes || [])[0] || "No dates in the forecast window yet")}</span>`}</div>
+  </div>`).join("");
+  el.onclick = async e => {
+    const ed = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+    if (ed) editPlan(P.plans.find(p => p.id === ed.dataset.edit));
+    if (del && confirm("Delete this plan?")) { await api("DELETE", `/api/plans/${del.dataset.del}`); toast("Deleted"); if (form.editing === del.dataset.del) resetForm(); load(); }
+  };
+}
+
+// ---------- watches ----------
+function renderWatches() {
+  const el = $("#watches");
+  const ORDER = ["surf", "sailing", "running", "yardwork"];
+  el.innerHTML = Object.entries(P.watches).sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0])).map(([k, w]) => {
+    const st = P.watch_status[k];
+    const [a, b] = w.between.split("-");
+    let status = "";
+    if (w.enabled && st) {
+      status = st.suggested
+        ? `<b>${st.suggested} suggestion${st.suggested > 1 ? "s" : ""}</b> on the dashboard.` + (st.best ? ` Best: ${esc(st.best.day)} ${esc(st.best.when)}, ${st.best.score.toFixed(1)} (${esc(st.best.verdict)}).` : "")
+        : st.best ? `Nothing at ${w.min_score.toFixed(1)}+ yet. Best is <b>${esc(st.best.day)} ${esc(st.best.when)}: ${st.best.score.toFixed(1)}, ${esc(st.best.verdict)}</b>. ${esc(st.best.detail)}`
+        : "No forecast hours to check in this range.";
+    }
+    const locs = P.locations.filter(l => k !== "surf" || l.surf_spot);
+    return `<div class="watch ${w.enabled ? "" : "off"}" data-k="${k}">
+      <div class="top"><span class="name">${esc(actLabel(k))}</span>
+        <label class="switch"><input type="checkbox" data-f="enabled" ${w.enabled ? "checked" : ""} aria-label="Watch ${esc(actLabel(k))}"><span></span></label></div>
+      <div class="body">
+        <div class="row" style="margin-top:6px">
+          <select data-f="location" aria-label="Place">${locs.map(l => `<option value="${esc(l.key)}" ${l.key === w.location ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input type="time" data-f="t1" value="${a}" aria-label="Earliest"><span class="shrink" style="color:var(--ink3)">to</span>
+          <input type="time" data-f="t2" value="${b === "24:00" ? "23:59" : b}" aria-label="Latest">
+          <select data-f="duration" aria-label="Length" style="max-width:130px">${[1,2,3,4,5,6].map(n => `<option value="${n}" ${n === w.duration ? "selected" : ""}>${n} h</option>`).join("")}</select>
+        </div>
+        <div class="seg" style="margin-top:10px">${DAYS.map(d => `<button type="button" class="chip ${w.days.includes(d) ? "on" : ""}" data-day="${d}">${DAYN[d]}</button>`).join("")}</div>
+        <div style="margin-top:12px"><span class="lbl">Suggest when score is at least <b data-out>${w.min_score.toFixed(1)}</b></span>
+          <input type="range" min="4" max="9.5" step="0.5" value="${w.min_score}" data-f="min_score" aria-label="Minimum score"></div>
+        <div class="status">${status}</div>
+      </div></div>`;
+  }).join("");
+
+  el.querySelectorAll(".watch").forEach(box => {
+    const k = box.dataset.k, w = P.watches[k];
+    const save = async patch => {
+      try { await api("PUT", `/api/watches/${k}`, patch); await load(); toast("Saved"); }
+      catch (e) { toast(e.message); }
+    };
+    box.querySelector('[data-f=enabled]').onchange = e => { box.classList.toggle("off", !e.target.checked); save({enabled: e.target.checked}); };
+    box.querySelector('[data-f=location]').onchange = e => save({location: e.target.value});
+    const times = () => save({between: `${box.querySelector('[data-f=t1]').value}-${box.querySelector('[data-f=t2]').value}`});
+    box.querySelector('[data-f=t1]').onchange = times; box.querySelector('[data-f=t2]').onchange = times;
+    box.querySelector('[data-f=duration]').onchange = e => save({duration: +e.target.value});
+    const rg = box.querySelector('[data-f=min_score]');
+    rg.oninput = () => box.querySelector("[data-out]").textContent = (+rg.value).toFixed(1);
+    rg.onchange = () => save({min_score: +rg.value});
+    box.querySelectorAll("[data-day]").forEach(b => b.onclick = () => {
+      const d = b.dataset.day, days = w.days.includes(d) ? w.days.filter(x => x !== d) : [...w.days, d];
+      save({days});
+    });
+  });
+}
+
+// ---------- places ----------
+function renderPlaces() {
+  const custom = P.locations.filter(l => l.custom);
+  $("#places").innerHTML = custom.length ? custom.map(l => `<li><span>${esc(l.name)}${l.surf_spot ? " · surf spot" : ""}</span>
+    <button class="btn danger small" data-delplace="${esc(l.key)}">Remove</button></li>`).join("")
+    : `<li class="empty">None yet. Use "+ New place" in the form.</li>`;
+  $("#places").onclick = async e => {
+    const b = e.target.closest("[data-delplace]"); if (!b) return;
+    try { await api("DELETE", `/api/places/${b.dataset.delplace}`); toast("Removed"); load(); }
+    catch (err) { toast(err.message); }
+  };
+}
+function setupPlaceSearch() {
+  const box = $("#placeBox"), q = $("#placeQ"), res = $("#placeResults");
+  $("#addPlaceBtn").onclick = () => { box.hidden = !box.hidden; if (!box.hidden) { q.focus(); $("#facing").value = form.activity === "surf" ? "90" : ""; } };
+  $("#cancelPlace").onclick = () => { box.hidden = true; $("#placeExtra").hidden = true; res.innerHTML = ""; q.value = ""; };
+  q.addEventListener("input", debounce(async () => {
+    $("#placeErr").textContent = "";
+    if (q.value.trim().length < 2) { res.innerHTML = ""; return; }
+    try {
+      const r = await api("GET", `/api/geocode?q=${encodeURIComponent(q.value.trim())}`);
+      res.innerHTML = r.results.map((x, i) => `<li data-i="${i}">${esc(x.name)} <small>${esc(x.detail)}</small></li>`).join("") || `<li class="note">No matches</li>`;
+      res.onclick = e => { const li = e.target.closest("li[data-i]"); if (!li) return;
+        placeSel = r.results[+li.dataset.i];
+        res.querySelectorAll("li").forEach(x => x.classList.toggle("on", x === li));
+        $("#placeName").value = placeSel.name; $("#placeExtra").hidden = false; };
+    } catch (e) { $("#placeErr").textContent = e.message; }
+  }, 400));
+  $("#savePlace").onclick = async () => {
+    try {
+      const p = await api("POST", "/api/places", {name: $("#placeName").value || placeSel.name, lat: placeSel.lat, lon: placeSel.lon, facing: $("#facing").value});
+      toast(`Added ${p.name}`); $("#cancelPlace").onclick();
+      await load(); $("#loc").value = p.key; preview();
+    } catch (e) { $("#placeErr").textContent = e.message; }
+  };
+}
+
+async function load() {
+  P = await api("GET", "/api/planner");
+  fillLocations(); renderPlans(); renderWatches(); renderPlaces();
+}
+(async () => {
+  await load(); buildForm(); setupPlaceSearch();
+  $("#saveBtn").onclick = savePlan; $("#cancelBtn").onclick = resetForm;
+  syncForm(); preview();
+})();
+</script>
+</body>
+</html>

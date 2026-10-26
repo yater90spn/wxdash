@@ -13,9 +13,19 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
 - Activities: spectator (alias baseball), surf, sailing, running, yardwork
   (task: general/mow/leaves/spray/plant). Thresholds are piecewise-linear curves,
   overridable in config.yaml under `rules:` or per schedule entry.
-- Schedule entries are fixed (`time: "10:00-13:00"`), flexible
-  (`flex: {between: "06:00-19:00", duration: 1}` picks the best window) or
-  one-off (`date:`). `lookahead_days` controls how far ahead cards show.
+- **Planner page `/plan`** is how Doug manages activities (he doesn't edit YAML).
+  Data lives in `data/plans.json` (gitignored, so auto-update never touches it) via
+  `wxdash/store.py`:
+  - plans: one-off (`date`) or weekly (`days`), fixed `time` or `flex`
+    {between, duration} = "best N hours in this range". Live rating preview via `POST /api/rate`.
+  - watches: per-activity "suggest when score ≥ min_score" (surf, sailing, running,
+    yardwork). Engine `watch_scan` adds `suggested: true` cards (max `max_suggestions`
+    per activity, skips days where that activity is already planned; surf/sailing/yard
+    limited to daylight). Planner shows the best window even when nothing qualifies.
+  - places: added by name via Open-Meteo geocoding (`/api/geocode`); surf spots need
+    `facing` (beach direction). They extend `locations:` in config.yaml.
+- config.yaml `schedule:` still works but is empty; `lookahead_days` (7) sets how far
+  ahead weekly plans and watches look.
 
 ## Layout
 - `app.py` — Flask server. `--demo` (synthetic data), `--print` (cards to terminal).
@@ -25,9 +35,11 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
 - `wxdash/activities/` — one scorer per activity; `base.py` has shared helpers.
 - `wxdash/engine.py` — config → fetch (30-min cache, serves stale on failure) → cards.
 - `wxdash/demo.py` — fake payloads shaped like the real APIs.
+- `static/plan.html` — planner (desktop + phone). `app.py` has the JSON API.
 - `static/index.html` — fixed 2560×720 layout: "now" panel left, swipeable
   activity cards, 36-hour strip (temp, feels-like, rain %, wind). Tap a card to
-  highlight its window. Dims at night unless URL has `?nodim`.
+  highlight its window. Dims at night unless URL has `?nodim`. Polls `/api/version`
+  every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
 ## Hardware / OS
 - Raspberry Pi 4B, Raspberry Pi OS **Trixie** (Wayland, **labwc**).
@@ -56,6 +68,9 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Kiosk at login was failing on the original manual install (autostart line probably
   still pointed at /home/pi); replaced by install.sh. Live Open-Meteo/NOAA calls were
   never tested from the dev sandbox; verify with `.venv/bin/python app.py --print`.
+
+- 2026-10-25: planner page, watches/suggestions, places by search; YAML example
+  schedule removed (those cards were placeholders, not Doug's real plans).
 
 ## Places in config
 home = Atlantic Highlands; long_branch = surf spot (beach faces 100° ESE, so offshore wind

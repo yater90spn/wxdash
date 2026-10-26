@@ -49,42 +49,8 @@ rules:
   #   wind: [[0,0],[7,0],[12,0.4],[18,1.2],[25,3],[35,5]]
 
 # ── Schedule ──────────────────────────────────────────────────────────────
-# Fixed:     time: "10:00-13:00"
-# Flexible:  flex: {between: "06:00-20:00", duration: 1}   → picks the best window
-# One-off:   date: 2026-10-24  (instead of days:)
-schedule:
-  - id: baseball
-    activity: spectator
-    label: Saturday baseball
-    location: home
-    days: [sat]
-    time: "10:00-13:00"
-
-  - id: surf
-    activity: surf
-    label: Surf session
-    location: long_branch
-    days: [sat, sun]
-    time: "07:00-10:00"
-
-  - id: sail
-    activity: sailing
-    label: Afternoon sail
-    location: sandy_hook_bay
-    days: [sat, sun]
-    flex: {between: "11:00-18:00", duration: 3}
-
-  - id: run
-    activity: running
-    label: Run
-    location: home
-    days: [mon, tue, wed, thu, fri, sat, sun]
-    flex: {between: "06:00-19:00", duration: 1}
-
-  - id: leaves
-    activity: yardwork
-    label: Leaf cleanup
-    location: home
-    days: [sat, sun]
-    flex: {between: "09:00-17:00", duration: 3}
-    rules: {task: leaves}
+# Plans and "watch for good conditions" settings are managed on the planner page
+# (http://weatherdash.local:8080/plan) and saved in data/plans.json on the Pi.
+# Entries here still work and show alongside them, but you don't need any.
+max_suggestions: 3         # suggestion cards per watched activity
+schedule: []
