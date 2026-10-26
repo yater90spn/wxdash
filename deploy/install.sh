@@ -19,6 +19,11 @@ if [ ! -x "$DIR/.venv/bin/python" ]; then
 fi
 [ "$FROM_UPDATE" = 1 ] || as_owner "$DIR/.venv/bin/pip" install --quiet -r "$DIR/requirements.txt"
 
+# 1b. Screen power control (DPMS on the Wayland desktop)
+if ! command -v wlopm >/dev/null 2>&1; then
+  apt-get install -y -qq wlopm >/dev/null 2>&1 || echo "note: couldn't install wlopm; screen on/off won't work"
+fi
+
 # 2. Server service (listens on the network so you can open http://<host>:8080 elsewhere)
 cat > /etc/systemd/system/wxdash.service <<EOF
 [Unit]

@@ -45,6 +45,14 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Pi's Chromium may deliver panel touches as mouse events. Polls `/api/version`
   every 20 s: reloads on new code, refreshes data when `plans_rev` changes.
 
+## Screen power
+- `wxdash/display.py` runs `wlopm --on/--off '*'` (DPMS on labwc; install.sh apt-installs
+  wlopm). Panel goes to standby but touch still reaches Chromium, so a tap wakes it.
+- The dashboard page decides: off after `display.idle_minutes` with no touch (0 = never),
+  except during `display.keep_on` hours; first tap after off is swallowed. Settings and
+  On/Off buttons are in the planner's Display section (`/api/display`, `/api/display/power`).
+  "⏻ Screen off" button on the dashboard. Not yet verified on the real panel that touch wakes it.
+
 ## Hardware / OS
 - Raspberry Pi 4B, Raspberry Pi OS **Trixie** (Wayland, **labwc**).
 - Hostname `weatherdash`, user **`weatherpi`** (not `pi`), project at `/home/weatherpi/wxdash`.

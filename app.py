@@ -16,6 +16,7 @@ from datetime import datetime
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
+from wxdash import display
 from wxdash.activities import REGISTRY
 from wxdash.engine import Engine, load_config
 from wxdash.store import Store, ValidationError
@@ -84,14 +85,16 @@ def create_app(config_path, demo=False, data_path=None):
     # ---------- dashboard ----------
     @app.get("/api/version")
     def version():
-        return jsonify({"version": VERSION, "plans_rev": store.revision()})
+        return jsonify({"version": VERSION, "plans_rev": store.revision(),
+                        "screen_on": display.state()["on"]})
 
     @app.get("/api/dashboard")
     def dashboard():
         try:
             port = request.host.rsplit(":", 1)[-1] if ":" in request.host else "80"
             planner_url = f"{socket.gethostname()}.local:{port}/plan"
-            return jsonify({**engine().dashboard(), "version": VERSION, "planner_url": planner_url})
+            return jsonify({**engine().dashboard(), "version": VERSION, "planner_url": planner_url,
+                            "display": {**store.load()["display"], "power": display.state()}})
         except Exception as e:
             logging.exception("dashboard failed")
             return err(str(e), 503)
@@ -138,6 +141,7 @@ def create_app(config_path, demo=False, data_path=None):
             "plans": plans,
             "watches": data["watches"],
             "watch_status": status,
+            "display": {**data["display"], "power": display.state()},
             "activities": ACTIVITIES,
             "locations": location_list(e, data),
             "lookahead_days": e.cfg.get("lookahead_days", 7),
@@ -195,6 +199,28 @@ def create_app(config_path, demo=False, data_path=None):
             return jsonify(store.update_watch(kind, body(), engine().locations()))
         except (ValidationError, ValueError) as ex:
             return err(str(ex))
+
+    # ---------- display power ----------
+    @app.get("/api/display")
+    def get_display():
+        return jsonify({**store.load()["display"], "power": display.state()})
+
+    @app.put("/api/display")
+    def put_display():
+        try:
+            store.update_display(body())
+            return get_display()
+        except (ValidationError, ValueError) as ex:
+            return err(str(ex))
+
+    @app.post("/api/display/power")
+    def display_power():
+        on = bool(body().get("on", True))
+        try:
+            display.set_power(on, demo=demo)
+            return get_display()
+        except Exception as ex:
+            return err(f"Couldn't turn the screen {'on' if on else 'off'}: {ex}", 500)
 
     # ---------- places ----------
     @app.get("/api/geocode")
