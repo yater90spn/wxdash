@@ -117,6 +117,8 @@ body.dim{filter:brightness(.55)}
 .tl-now{pointer-events:auto;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:999px;
   padding:6px 16px;font-family:inherit;font-weight:600;font-size:15px;line-height:1;cursor:pointer;visibility:hidden}
 .tl-now.show{visibility:visible}
+.tl-legend[hidden]{display:none}
+.tl-legend .plain::before{display:none}
 .tl-legend{display:flex;gap:16px;background:var(--panel);padding:2px 8px;border-radius:6px}
 .tl-legend span::before{content:"";display:inline-block;width:14px;height:3px;margin-right:6px;vertical-align:middle;background:currentColor}
 </style>
@@ -132,7 +134,13 @@ body.dim{filter:brightness(.55)}
       <div class="tl-head">
         <span class="place" id="tlPlace"></span>
         <span class="day" id="tlDay"></span>
-        <span class="tl-legend">
+        <span class="tl-legend" id="pastLegend" hidden>
+          <span style="color:#fff">Actual</span>
+          <span style="color:var(--temp)">Forecast from a day earlier</span>
+          <span style="color:var(--rain)">Rain measured (filled) / forecast (outline)</span>
+          <span id="pastStation" class="plain" style="color:var(--ink3)"></span>
+        </span>
+        <span class="tl-legend" id="mainLegend">
           <span style="color:var(--temp)">Temp</span>
           <span style="color:var(--ink3)">Feels like</span>
           <span style="color:var(--rain)">Rain chance</span>
@@ -422,6 +430,10 @@ function tlScrolled() {
   const sc = document.getElementById("tlScroll"), off = sc.scrollLeft - nowX(), btn = document.getElementById("tlNow");
   btn.classList.toggle("show", Math.abs(off) > TL.cw * 3);
   btn.textContent = off > 0 ? "← Now" : "Now →";
+  // Swap the header key while looking at the past day
+  const pastView = TL.nowIdx > 0 && nowX() - sc.scrollLeft > 300;   // a good stretch of the past is on screen
+  document.getElementById("pastLegend").hidden = !pastView;
+  document.getElementById("mainLegend").hidden = pastView;
   // Label the selected card's day while it's on screen; otherwise the day at the left edge
   const c = SELECTED && DATA.cards.find(x => x.id === SELECTED);
   const cx = c ? TL.xt(new Date(c.start).getTime()) : -1;
@@ -461,6 +473,7 @@ function renderTimeline(d) {
   const t0 = new Date(tl[0].t).getTime();
   const xt = ms => (ms - t0) / 3600000 * cw;
   TL = {cw, xt, tl, nowIdx};
+  document.getElementById("pastStation").textContent = d.history_station ? `Station: ${d.history_station}` : "";
   let s = "";
   // Past day: shaded, with a "Now" marker and a key to the extra lines
   if (nowIdx > 0) {
@@ -468,10 +481,6 @@ function renderTimeline(d) {
     s += `<rect x="0" y="${tTop - 22}" width="${nx}" height="${hY - tTop + 14}" fill="rgba(120,140,170,.07)"/>`;
     s += `<line x1="${nx}" y1="${tTop - 22}" x2="${nx}" y2="${hY - 8}" stroke="var(--ink2)" stroke-width="2" stroke-dasharray="4 4"/>`;
     s += `<text x="${nx + 6}" y="${tTop - 6}" fill="var(--ink)" font-size="13" font-weight="600">Now</text>`;
-    s += `<text x="${nx - 8}" y="${tTop - 6}" text-anchor="end" fill="var(--ink2)" font-size="13">`
-       + `<tspan fill="#fff" font-weight="600">━ actual</tspan>${d.history_station ? ` (${esc(d.history_station)})` : ""}`
-       + `  <tspan fill="var(--temp)">┅ forecast from a day earlier</tspan>  `
-       + `<tspan fill="var(--rain)">▮ rain measured ▯ rain forecast</tspan></text>`;
   }
 
   // Activity windows as shaded bands (selected one highlighted)
@@ -500,25 +509,6 @@ function renderTimeline(d) {
     ax += `<text x="38" y="${y(v) + 4}" text-anchor="end" fill="var(--ink3)" font-size="13">${v}°</text>`;
   }
   ax += `<text x="0" y="${rBot - 4}" fill="var(--rain)" font-size="12">rain</text><text x="0" y="${wY + 5}" fill="var(--wind)" font-size="12">mph</text>`;
-  // Tide (forecast side only): soft teal curve in the rain band, behind the bars, H/L labels
-  const tide = d.tides && d.tides[key];
-  const tideLeg = document.getElementById("tideLeg"); if (tideLeg) tideLeg.hidden = !tide;
-  if (tide && tide.hourly.length > 1) {
-    const pts = tide.hourly.map(([t, ft]) => [xt(new Date(t).getTime()) + cw / 2, ft]).filter(p => p[0] >= nowIdx * cw);
-    const fts = pts.map(p => p[1]), tlo = Math.min(...fts), thi = Math.max(...fts);
-    const ty = ft => rBot - 3 - (ft - tlo) / Math.max(0.1, thi - tlo) * (rBot - rTop - 10);
-    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${ty(p[1]).toFixed(1)}`).join("");
-    if (pts.length > 1) {
-      s += `<path d="${line}L${pts[pts.length - 1][0].toFixed(1)},${rBot}L${pts[0][0].toFixed(1)},${rBot}Z" fill="rgba(56,178,172,.13)"/>`;
-      s += `<path d="${line}" fill="none" stroke="var(--s4)" stroke-width="1.6" opacity=".8"/>`;
-      for (const ev of tide.events) {
-        const ex = xt(new Date(ev.t).getTime()); if (ex < nowIdx * cw || ex > W) continue;
-        const lbl = `${ev.type} ${hourLbl(new Date(ev.t)).replace(/([ap])$/, "")}${new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}) !== "00" ? ":" + new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}).padStart(2, "0") : ""}${hourLbl(new Date(ev.t)).slice(-1)}`;
-        const ey = ev.type === "H" ? ty(thi) - 3 : ty(tlo) - 5;
-        s += `<text x="${ex}" y="${ey}" text-anchor="middle" fill="var(--s4)" font-size="11" font-weight="600">${lbl}</text>`;
-      }
-    }
-  }
   // Past: rain amounts, measured (filled) vs forecast a day earlier (outline); full height = 0.25 in
   const amtH = a => Math.min(1, (a || 0) / 0.25) * (rBot - rTop);
   tl.forEach((h, i) => {
@@ -536,6 +526,25 @@ function renderTimeline(d) {
     if (p > .02) s += `<rect x="${i * cw + 3}" y="${rBot - bh}" width="${cw - 6}" height="${bh}" rx="2" fill="var(--rain)" opacity="${.35 + .6 * p}"/>`;
     if ((h.pop || 0) >= 30 && i % 2 === 0) s += `<text x="${x(i)}" y="${rBot - bh - 4}" text-anchor="middle" fill="var(--rain)" font-size="12">${r0(h.pop)}%</text>`;
   });
+  // Tide (forecast side only): teal curve in the rain band, drawn over the rain bars, H/L labels
+  const tide = d.tides && d.tides[key];
+  const tideLeg = document.getElementById("tideLeg"); if (tideLeg) tideLeg.hidden = !tide;
+  if (tide && tide.hourly.length > 1) {
+    const pts = tide.hourly.map(([t, ft]) => [xt(new Date(t).getTime()) + cw / 2, ft]).filter(p => p[0] >= nowIdx * cw);
+    const fts = pts.map(p => p[1]), tlo = Math.min(...fts), thi = Math.max(...fts);
+    const ty = ft => rBot - 3 - (ft - tlo) / Math.max(0.1, thi - tlo) * (rBot - rTop - 10);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${ty(p[1]).toFixed(1)}`).join("");
+    if (pts.length > 1) {
+      s += `<path d="${line}L${pts[pts.length - 1][0].toFixed(1)},${rBot}L${pts[0][0].toFixed(1)},${rBot}Z" fill="rgba(56,178,172,.10)"/>`;
+      s += `<path d="${line}" fill="none" stroke="var(--s4)" stroke-width="2"/>`;
+      for (const ev of tide.events) {
+        const ex = xt(new Date(ev.t).getTime()); if (ex < nowIdx * cw || ex > W) continue;
+        const lbl = `${ev.type} ${hourLbl(new Date(ev.t)).replace(/([ap])$/, "")}${new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}) !== "00" ? ":" + new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}).padStart(2, "0") : ""}${hourLbl(new Date(ev.t)).slice(-1)}`;
+        const ey = ev.type === "H" ? ty(thi) - 3 : ty(tlo) - 5;
+        s += `<text x="${ex}" y="${ey}" text-anchor="middle" fill="var(--s4)" font-size="11" font-weight="600">${lbl}</text>`;
+      }
+    }
+  }
   s += `<line x1="0" x2="${W}" y1="${rBot}" y2="${rBot}" stroke="var(--line)"/>`;
   // Lines. Future: forecast temp (solid orange) + feels-like (gray dashed).
   // Past: forecast from a day earlier (thin dashed orange / gray) + actual (white).
@@ -559,9 +568,14 @@ function renderTimeline(d) {
   s += `<path d="${path("temp", nowIdx, N)}" fill="none" stroke="var(--temp)" stroke-width="3.5" stroke-linejoin="round"/>`;
   tl.forEach((h, i) => {
     if ((i - nowIdx) % 3 !== 0) return;
-    if (h.past) {           // actual (white) above, forecast (orange) below
-      if (h.obs_temp != null) s += `<text x="${x(i)}" y="${y(Math.max(h.obs_temp, h.temp ?? -99)) - 9}" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">${r0(h.obs_temp)}°</text>`;
-      if (h.temp != null) s += `<text x="${x(i)}" y="${y(Math.min(h.temp, h.obs_temp ?? 999)) + 18}" text-anchor="middle" fill="var(--temp)" font-size="12">${r0(h.temp)}°</text>`;
+    if (h.past) {
+      // Each number goes on the outside of its own line: the higher line's label above it,
+      // the lower line's label below it, so they swap sides wherever the lines cross.
+      const a = h.obs_temp, f = h.temp;
+      const actualOnTop = a != null && (f == null || a >= f);
+      const above = v => y(v) - 9, below = v => y(v) + 18;
+      if (a != null) s += `<text x="${x(i)}" y="${actualOnTop ? above(a) : below(a)}" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">${r0(a)}°</text>`;
+      if (f != null) s += `<text x="${x(i)}" y="${actualOnTop && a != null ? below(f) : above(f)}" text-anchor="middle" fill="var(--temp)" font-size="12">${r0(f)}°</text>`;
     } else if (h.temp != null)
       s += `<text x="${x(i)}" y="${y(h.temp) - 9}" text-anchor="middle" fill="var(--ink)" font-size="14" font-weight="500">${r0(h.temp)}°</text>`;
   });

@@ -56,11 +56,15 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Nothing stored locally; cached like the forecast. Errors show in the left panel meta line.
 - Drawn: actual temp white solid, actual feels white dashed; day-ahead forecast temp
   orange dashed, feels gray dotted; rain measured = filled bar, forecast = outline.
+  Past temp numbers sit on the outside of their own line (higher line's label above, lower
+  line's below; they swap where the lines cross). The past-section key lives in the strip
+  header (`#pastLegend`) and replaces the normal key when >300 px of the past is on screen.
 - Not yet verified against the live services from the Pi (sandbox can't reach them).
 
 ## Tide curve on the strip
-- Forecast side only (not in the past section, by request — it's already busy). Soft teal
-  area + line in the rain band, behind the rain bars, labeled at highs/lows ("H 7:21p").
+- Forecast side only (not in the past section, by request — it's already busy). Teal
+  area + line in the rain band, drawn on top of the rain bars (by request), labeled at
+  highs/lows ("H 7:21p").
 - Home uses `tide_station` (config, Sandy Hook 8531680); a selected card's place uses its
   `noaa_station`. `Engine.tides_for` caches NOAA predictions 6 h; payload `tides[loc_key]`.
 
