@@ -490,16 +490,21 @@ function renderTimeline(d) {
     const xa = Math.max(0, a), xb = Math.min(W, b), isSel = c.id === SELECTED;
     s += `<rect x="${xa}" y="${tTop - 22}" width="${xb - xa}" height="${hY - tTop + 14}" rx="6"
             fill="${isSel ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.035)"}" ${isSel ? 'stroke="rgba(255,255,255,.5)"' : ""}/>`;
-    if (isSel || (!SELECTED && (xb - xa) > c.title.length * 7.5 + 10))
-      s += `<text x="${xa + 6}" y="${tTop - 6}" fill="${isSel ? "var(--ink)" : "var(--ink3)"}" font-size="13" font-weight="${isSel ? 600 : 400}">${esc(c.title)}</text>`;
+    // The top row also carries the day names at midnight; if this label would run into
+    // one, drop it a row (selected card) or skip it (others).
+    const labW = c.title.length * 7.5 + 10;
+    const hitsDay = tl.some((h, i) => new Date(h.t).getHours() === 0 && i > 0 && i * cw > xa - 110 && i * cw < xa + labW);
+    if (isSel || (!SELECTED && (xb - xa) > labW && !hitsDay))
+      s += `<text x="${xa + 6}" y="${isSel && hitsDay ? tTop + 12 : tTop - 6}" fill="${isSel ? "var(--ink)" : "var(--ink3)"}" font-size="13" font-weight="${isSel ? 600 : 400}">${esc(c.title)}</text>`;
   }
   // Night shading + day separators
   tl.forEach((h, i) => {
     const dt = new Date(h.t);
     if (!h.day) s += `<rect x="${i * cw}" y="${tTop}" width="${cw + .5}" height="${rBot - tTop}" fill="rgba(0,0,0,.25)"/>`;
     if (dt.getHours() === 0 && i > 0) {
-      s += `<line x1="${i * cw}" y1="${tTop - 18}" x2="${i * cw}" y2="${hY + 4}" stroke="var(--line)" stroke-width="2"/>`;
-      s += `<text x="${i * cw + 6}" y="${hY + 4}" fill="var(--ink2)" font-size="13" font-weight="600">${dt.toLocaleDateString([], {weekday:"short"})}</text>`;
+      s += `<line x1="${i * cw}" y1="${tTop - 22}" x2="${i * cw}" y2="${hY + 4}" stroke="var(--line)" stroke-width="2"/>`;
+      // Day name on the top row of the chart, spelled out
+      s += `<text x="${i * cw + 7}" y="${tTop - 6}" fill="var(--ink)" font-size="14" font-weight="700">${dt.toLocaleDateString([], {weekday:"long"})}</text>`;
     }
   });
   // Temperature gridlines (labels live on the fixed axis)
@@ -541,7 +546,8 @@ function renderTimeline(d) {
         const ex = xt(new Date(ev.t).getTime()); if (ex < nowIdx * cw || ex > W) continue;
         const lbl = `${ev.type} ${hourLbl(new Date(ev.t)).replace(/([ap])$/, "")}${new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}) !== "00" ? ":" + new Date(ev.t).toLocaleTimeString([], {minute: "2-digit"}).padStart(2, "0") : ""}${hourLbl(new Date(ev.t)).slice(-1)}`;
         const ey = ev.type === "H" ? ty(thi) - 3 : ty(tlo) - 5;
-        s += `<text x="${ex}" y="${ey}" text-anchor="middle" fill="var(--s4)" font-size="11" font-weight="600">${lbl}</text>`;
+        const lx = Math.max(ex, nowIdx * cw + 30);   // keep labels clear of the "Now" edge
+        s += `<text x="${lx}" y="${ey}" text-anchor="middle" fill="var(--s4)" font-size="11" font-weight="600">${lbl}</text>`;
       }
     }
   }
@@ -588,7 +594,7 @@ function renderTimeline(d) {
   });
   // Hour labels
   tl.forEach((h, i) => { const dt = new Date(h.t);
-    if (i % 2 === 0 && dt.getHours() !== 0) s += `<text x="${x(i)}" y="${hY + 4}" text-anchor="middle" fill="var(--ink3)" font-size="13">${hourLbl(dt)}</text>`; });
+    if (i % 2 === 0) s += `<text x="${x(i)}" y="${hY + 4}" text-anchor="middle" fill="var(--ink3)" font-size="13">${hourLbl(dt)}</text>`; });
 
   svg.setAttribute("width", W); svg.setAttribute("height", H);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);

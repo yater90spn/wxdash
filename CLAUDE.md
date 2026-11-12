@@ -59,6 +59,9 @@ Activity-aware hourly weather dashboard. Owner: Doug. Built in a claude.ai sessi
   Past temp numbers sit on the outside of their own line (higher line's label above, lower
   line's below; they swap where the lines cross). The past-section key lives in the strip
   header (`#pastLegend`) and replaces the normal key when >300 px of the past is on screen.
+- Day names (full: "Thursday") sit on the strip's top row at each midnight line; hour row
+  shows "12a" there. Card-window titles on that row are skipped (or, if selected, dropped a
+  row) when they'd run into a day name.
 - Not yet verified against the live services from the Pi (sandbox can't reach them).
 
 ## Tide curve on the strip
